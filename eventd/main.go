@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 
@@ -50,6 +51,8 @@ func buildHandler(cmdName string, cmdArgs []string) event.Handler {
 		cmd := exec.Command(cmdName, append(cmdArgs, string(ev), string(rd))...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		cmd.Run()
+		if err := cmd.Run(); err != nil {
+			log.Println(err)
+		}
 	}
 }
