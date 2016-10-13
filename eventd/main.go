@@ -25,12 +25,13 @@ func (chs *channels) Set(ev string) error {
 func main() {
 
 	var (
+		handler      event.Handler
 		listenAddr   string
-		listenEvents channels
+		listenEvents = channels{}
 		cli          = flag.CommandLine
 	)
 
-	cli.StringVar(&listenAddr, "listen", ":6379", "listen event address")
+	cli.StringVar(&listenAddr, "listen", "127.0.0.1:6379", "listen event address")
 	cli.Var(&listenEvents, "event", "listen events")
 	cli.Parse(os.Args[1:])
 
@@ -38,7 +39,21 @@ func main() {
 		return redis.Dial("tcp", listenAddr)
 	}, 10))
 
-	handler := buildHandler(cli.Arg(0), cli.Args()[1:])
+	args := cli.Args()
+	switch len(args) {
+	case 0:
+		handler = buildHandler("echo", []string{})
+	case 1:
+		handler = buildHandler(args[0], []string{})
+	default:
+		handler = buildHandler(args[0], args[1:])
+	}
+
+	if len(listenEvents) == 0 {
+		cli.PrintDefaults()
+		return
+	}
+
 	for _, ev := range listenEvents {
 		li.On(event.Event(ev.(string)), handler)
 	}
