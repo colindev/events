@@ -73,6 +73,11 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 		return
 	}
 
+	// 斷線的話就重新設定 running = false
+	defer func() {
+		l.running = false
+	}()
+
 	conn := l.pool.Get()
 	defer conn.Close()
 	l.psc.Conn = conn
