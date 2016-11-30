@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"regexp"
 	"sync"
 	"syscall"
 )
@@ -15,50 +18,73 @@ func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
-func writeLen(w io.Writer, prefix byte, n int) error {
-	var x [32]byte
-	x[len(x)-1] = '\n'
-	x[len(x)-2] = '\r'
-	i := len(x) - 3
-	for {
-		x[i] = byte('0' + n%10)
-		i--
-		n = n / 10
-		if n == 0 {
-			break
-		}
-	}
-	x[i] = prefix
-	log.Println(x)
-	log.Println(x[i:])
-	_, err := w.Write(x[i:])
-	return err
-}
-
-func writeString(w io.Writer, s string) error {
-	writeLen(w, '$', len(s))
-	w.Write([]byte(s))
-	_, err := w.Write([]byte("\r\n"))
-
-	return err
-}
-
 func main() {
+
+	hub := &Hub{
+		RWMutex: &sync.RWMutex{},
+		m:       map[string]*Conn{},
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT)
 	err := ListenAndServe(quit, ":8000", func(c *Conn) {
 
-		defer c.conn.Close()
+		defer c.close()
+		defer c.w.Flush()
 
 		log.Printf("%#v\n", c.conn.RemoteAddr().String())
 
 		for {
-			b, err := c.r.ReadLine()
-			log.Printf("<- client: %v = %s %v\n", b, b, err)
+			line, err := c.readLine()
+			log.Printf("<- client: %v = %s %v\n", line, line, err)
 			if err != nil {
 				return
 			}
+
+			/*
+				$xxx = auth
+				:n = len(event:{...})
+				event:{...}
+				+channal
+			*/
+			switch line[0] {
+			case '$':
+				if err := hub.Auth(c, line[1:]); err != nil {
+					log.Println(err)
+					c.w.Write([]byte("!" + err.Error()))
+					return
+				}
+			case '+':
+				c.subscribe()
+			case ':':
+				n, err := parseLen(line[1:])
+				if err != nil {
+					log.Println(err)
+					c.w.Write([]byte("!" + err.Error()))
+					return
+				}
+
+				log.Printf("length: %d\n", n)
+
+				p := make([]byte, n)
+				_, err = io.ReadFull(c.r, p)
+				if err != nil {
+					log.Println(err)
+					c.w.Write([]byte("!" + err.Error()))
+					return
+				}
+
+				// TODO 存起來
+				eventName, eventData := parseEvent(p)
+				log.Println("receive:", eventName, string(eventData))
+				// 去除換行
+				c.readLine()
+
+			}
+			if err := c.w.Flush(); err != nil {
+				log.Println(err)
+			}
+
 		}
 	})
 
@@ -67,54 +93,116 @@ func main() {
 	}
 }
 
-/*
-$ = auth
-:n = len(hash:{...})
-hash:{...}
-*/
-type Hub struct {
-	*sync.RWMutex
-	m map[*Conn]bool
+func parseLen(p []byte) (int64, error) {
+
+	raw := string(p)
+
+	if len(p) == 0 {
+		return -1, errors.New("length error:" + raw)
+	}
+
+	var negate bool
+	if p[0] == '-' {
+		negate = true
+		p = p[1:]
+		if len(p) == 0 {
+			return -1, errors.New("length error:" + raw)
+		}
+	}
+
+	var n int64
+	for _, b := range p {
+
+		if b == '\r' || b == '\n' {
+			break
+		}
+		n *= 10
+		if b < '0' || b > '9' {
+			return -1, errors.New("not number:" + string(b))
+		}
+
+		n += int64(b - '0')
+	}
+
+	if negate {
+		n = -n
+	}
+
+	return n, nil
 }
 
-func (h *Hub) Auth(line []byte) error {
+func parseEvent(p []byte) (string, []byte) {
 
-	// TODO
+	var index int
+	ev := []byte{}
+
+	for i, b := range p {
+		if b == ':' {
+			index = i + 1
+			break
+		}
+		ev = append(ev, b)
+	}
+
+	return string(ev), p[index:]
+}
+
+type Hub struct {
+	*sync.RWMutex
+	m map[string]*Conn
+}
+
+func (h *Hub) Auth(c *Conn, p []byte) error {
+
+	h.Lock()
+	defer h.Unlock()
+
+	if len(p) <= 1 {
+		return errors.New("empty id")
+	}
+
+	id := string(p[1:])
+
+	if _, exists := h.m[id]; exists {
+		return fmt.Errorf("hub: duplicate auth id(%s)", id)
+	}
+
+	h.m[id] = c
 
 	return nil
 }
 
-func (h *Hub) Append(c *Conn) {
+func (h *Hub) Quit(conn *Conn) {
 	h.Lock()
 	defer h.Unlock()
 
-	h.m[c] = true
-}
-
-func (h *Hub) Delete(c *Conn) {
-	h.Lock()
-	defer h.Unlock()
-
-	delete(h.m, c)
+	for id, c := range h.m {
+		if c == conn {
+			delete(h.m, id)
+			conn.close()
+		}
+	}
 }
 
 type HandlerFunc func(c *Conn)
 
 type Conn struct {
-	conn    net.Conn
-	w       *bufio.Writer
-	r       *bufio.Reader
-	session string
-}
-
-func (c *Conn) auth() error {
-
-	line, err := c.readLine()
-
+	conn     net.Conn
+	w        *bufio.Writer
+	r        *bufio.Reader
+	channals map[string]*regexp.Regexp
 }
 
 func (c *Conn) readLine() ([]byte, error) {
 	return c.r.ReadSlice('\n')
+}
+
+func (c *Conn) subscribe(p []byte) {
+	// TODO replace *
+}
+
+func (c *Conn) close() error {
+	return c.conn.Close()
 }
 
 func ListenAndServe(quit <-chan os.Signal, addr string, handle HandlerFunc) error {
