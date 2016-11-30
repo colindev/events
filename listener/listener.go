@@ -21,6 +21,7 @@ type (
 	}
 
 	listener struct {
+		wg *sync.WaitGroup
 		*sync.RWMutex
 		pool           redis.Pool
 		psc            redis.PubSubConn
@@ -40,6 +41,7 @@ var (
 // New return Listener instansce
 func New(pool redis.Pool) Listener {
 	return &listener{
+		wg:      &sync.WaitGroup{},
 		RWMutex: &sync.RWMutex{},
 		pool:    pool,
 		events:  make(map[event.Event][]event.Handler),
@@ -114,8 +116,12 @@ func (l *listener) Trigger(ev event.Event, rd event.RawData) {
 	}
 
 	hs := l.findHandlers(ev)
-	for _, fn := range hs {
-		go fn(ev, rd)
+	for _, handler := range hs {
+		l.wg.Add(1)
+		go func(fn event.Handler) {
+			fn(ev, rd)
+			l.wg.Done()
+		}(handler)
 	}
 }
 
@@ -153,6 +159,8 @@ func (l *listener) Stop() error {
 	if l.running {
 		return l.psc.PUnsubscribe()
 	}
+
+	l.wg.Wait()
 
 	return nil
 }

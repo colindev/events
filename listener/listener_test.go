@@ -1,8 +1,9 @@
 package listener
 
 import (
-	"sync"
+	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/redis"
@@ -13,21 +14,20 @@ func TestListener(t *testing.T) {
 		return redis.Dial("tcp", "127.0.0.1:6379")
 	}, 10))
 
-	wg := &sync.WaitGroup{}
-
 	fn := func(ev event.Event, rd event.RawData) {
-		t.Log(ev, rd.String())
+		rand.Seed(int64(time.Now().Nanosecond()))
+		n := time.Duration(rand.Intn(50))
+		t.Log("sleep", n, ev, rd.String())
 		if rd.String() != "world" {
 			t.Errorf("On(%v, %v)", ev, rd.String())
 		}
-		wg.Done()
+
+		time.Sleep(time.Millisecond * n)
 	}
 
 	l.On(event.Event("hello.*"), fn, fn, fn)
 
-	wg.Add(3)
-
 	l.Trigger(event.Event("hello.a"), event.RawData("world"))
 
-	wg.Wait()
+	l.Stop()
 }
