@@ -1,0 +1,27 @@
+package main
+
+import "fmt"
+
+// Env 環境參數
+type Env struct {
+	path     string `env:"-"`
+	Debug    bool   `env:"DEBUG"`
+	AuthDSN  string `env:"AUTH_DSN"`
+	EventDSN string `env:"EVENT_DSN"`
+	Addr     string `env:"ADDR"`
+}
+
+func (env *Env) String() string {
+	return fmt.Sprintf(`
+	path=%s
+	DEBUG=%t
+	AUTH_DSN=%s
+	EVENT_DSN=%s
+	ADDR=%s
+	`,
+		env.path,
+		env.Debug,
+		env.AuthDSN,
+		env.EventDSN,
+		env.Addr)
+}

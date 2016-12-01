@@ -1,36 +1,63 @@
 package main
 
 import (
-	"bufio"
 	"errors"
-	"fmt"
+	"flag"
 	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"regexp"
-	"sync"
 	"syscall"
+	"time"
+
+	"github.com/colindev/osenv"
+	"github.com/joho/godotenv"
+)
+
+var (
+	env      = &Env{}
+	logFlags = log.LstdFlags | log.Lshortfile
 )
 
 func init() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	flag.StringVar(&env.path, "env", ".env", "environment file")
+	flag.Parse()
+
+	log.SetFlags(logFlags)
+	if err := godotenv.Overload(env.path); err != nil {
+		log.Fatal(err)
+	}
+	if err := osenv.LoadTo(env); err != nil {
+		log.Fatal(err)
+	}
+	log.Println(env.String())
+	if !env.Debug {
+		logFlags = log.LstdFlags
+		log.SetFlags(logFlags)
+	}
 }
 
 func main() {
 
-	hub := &Hub{
-		RWMutex: &sync.RWMutex{},
-		m:       map[string]*Conn{},
+	var err error
+
+	l := log.New(os.Stdout, "[hub]", logFlags)
+	hub, err := NewHub(env, l)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT)
-	err := ListenAndServe(quit, ":8000", func(c *Conn) {
+	err = ListenAndServe(quit, env.Addr, func(c *Conn) {
 
 		defer c.close()
 		defer c.w.Flush()
+		defer func() {
+			hub.Quit(c, time.Now())
+		}()
 
 		log.Printf("%#v\n", c.conn.RemoteAddr().String())
 
@@ -49,13 +76,14 @@ func main() {
 			*/
 			switch line[0] {
 			case '$':
+				// 失敗直接斷線
 				if err := hub.Auth(c, line[1:]); err != nil {
 					log.Println(err)
 					c.w.Write([]byte("!" + err.Error()))
 					return
 				}
 			case '+':
-				c.subscribe()
+				c.subscribe(line[1:])
 			case ':':
 				n, err := parseLen(line[1:])
 				if err != nil {
@@ -147,64 +175,6 @@ func parseEvent(p []byte) (string, []byte) {
 	return string(ev), p[index:]
 }
 
-type Hub struct {
-	*sync.RWMutex
-	m map[string]*Conn
-}
-
-func (h *Hub) Auth(c *Conn, p []byte) error {
-
-	h.Lock()
-	defer h.Unlock()
-
-	if len(p) <= 1 {
-		return errors.New("empty id")
-	}
-
-	id := string(p[1:])
-
-	if _, exists := h.m[id]; exists {
-		return fmt.Errorf("hub: duplicate auth id(%s)", id)
-	}
-
-	h.m[id] = c
-
-	return nil
-}
-
-func (h *Hub) Quit(conn *Conn) {
-	h.Lock()
-	defer h.Unlock()
-
-	for id, c := range h.m {
-		if c == conn {
-			delete(h.m, id)
-			conn.close()
-		}
-	}
-}
-
-type HandlerFunc func(c *Conn)
-
-type Conn struct {
-	conn     net.Conn
-	w        *bufio.Writer
-	r        *bufio.Reader
-	channals map[string]*regexp.Regexp
-}
-
-func (c *Conn) readLine() ([]byte, error) {
-	return c.r.ReadSlice('\n')
-}
-
-func (c *Conn) subscribe(p []byte) {
-	// TODO replace *
-}
-
-func (c *Conn) close() error {
-	return c.conn.Close()
-}
-
 func ListenAndServe(quit <-chan os.Signal, addr string, handle HandlerFunc) error {
 
 	network := "tcp"
@@ -238,11 +208,7 @@ func ListenAndServe(quit <-chan os.Signal, addr string, handle HandlerFunc) erro
 			return listener.Close()
 
 		case conn := <-cc:
-			go handle(&Conn{
-				conn: conn,
-				w:    bufio.NewWriter(conn),
-				r:    bufio.NewReader(conn),
-			})
+			go handle(newConn(conn, time.Now()))
 
 		}
 
