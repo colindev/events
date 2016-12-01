@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"flag"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -51,70 +50,7 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT)
-	err = ListenAndServe(quit, env.Addr, func(c *Conn) {
-
-		defer c.close()
-		defer c.w.Flush()
-		defer func() {
-			hub.Quit(c, time.Now())
-		}()
-
-		log.Printf("%#v\n", c.conn.RemoteAddr().String())
-
-		for {
-			line, err := c.readLine()
-			log.Printf("<- client: %v = %s %v\n", line, line, err)
-			if err != nil {
-				return
-			}
-
-			/*
-				$xxx = auth
-				:n = len(event:{...})
-				event:{...}
-				+channal
-			*/
-			switch line[0] {
-			case '$':
-				// 失敗直接斷線
-				if err := hub.Auth(c, line[1:]); err != nil {
-					log.Println(err)
-					c.w.Write([]byte("!" + err.Error()))
-					return
-				}
-			case '+':
-				c.subscribe(line[1:])
-			case ':':
-				n, err := parseLen(line[1:])
-				if err != nil {
-					log.Println(err)
-					c.w.Write([]byte("!" + err.Error()))
-					return
-				}
-
-				log.Printf("length: %d\n", n)
-
-				p := make([]byte, n)
-				_, err = io.ReadFull(c.r, p)
-				if err != nil {
-					log.Println(err)
-					c.w.Write([]byte("!" + err.Error()))
-					return
-				}
-
-				// TODO 存起來
-				eventName, eventData := parseEvent(p)
-				log.Println("receive:", eventName, string(eventData))
-				// 去除換行
-				c.readLine()
-
-			}
-			if err := c.w.Flush(); err != nil {
-				log.Println(err)
-			}
-
-		}
-	})
+	err = listenAndServe(quit, env.Addr, hub.Handler)
 
 	if err != nil {
 		log.Println(err)
@@ -175,7 +111,7 @@ func parseEvent(p []byte) (string, []byte) {
 	return string(ev), p[index:]
 }
 
-func ListenAndServe(quit <-chan os.Signal, addr string, handle HandlerFunc) error {
+func listenAndServe(quit <-chan os.Signal, addr string, handle HandlerFunc) error {
 
 	network := "tcp"
 

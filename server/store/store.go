@@ -87,7 +87,10 @@ func (s *Store) NewAuth(auth *Auth) error {
 func (s *Store) UpdateAuth(auth *Auth) error {
 	s.wg.Add(1)
 	defer s.wg.Done()
-	return s.auth.Where("name", auth.Name).Where("connected_at", auth.ConnectedAt).Update(auth).Error
+	return s.auth.Where(map[string]interface{}{
+		"name":         auth.Name,
+		"connected_at": auth.ConnectedAt,
+	}).Update(auth).Error
 }
 
 func (s *Store) NewEvent(ev *Event) error {
@@ -134,17 +137,20 @@ func (s *Store) EachEvents(f func(*Event), since int64, prefix []string) error {
 	return nil
 }
 
+// Auth table struct
 type Auth struct {
 	Name           string `gorm:"column:name;index;size:40"`
-	IP             string `gorm:"column:ip;size:15"`
+	IP             string `gorm:"column:ip;size:30"`
 	ConnectedAt    int64  `gorm:"column:connected_at"`
 	DisconnectedAt int64  `gorm:"column:disconnected_at"`
 }
 
+// TableName ...
 func (Auth) TableName() string {
 	return "auth"
 }
 
+// Event table struct
 type Event struct {
 	// hash(name:json)
 	Hash string `gorm:"column:hash;primary_key;size:40"`
@@ -156,6 +162,7 @@ type Event struct {
 	ReceivedAt int64  `gorm:"column:received_at"`
 }
 
+// TableName ...
 func (Event) TableName() string {
 	return "events"
 }
