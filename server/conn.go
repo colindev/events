@@ -12,8 +12,6 @@ import (
 	"github.com/colindev/events/server/store"
 )
 
-var ()
-
 // Conn 包裝 net.Conn (TCP) 連線
 type Conn struct {
 	*sync.RWMutex
