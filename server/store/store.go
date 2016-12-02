@@ -20,6 +20,7 @@ type Store struct {
 	wg     *sync.WaitGroup
 	auth   *gorm.DB
 	events *gorm.DB
+	Events chan *Event
 }
 
 func New(c Config) (*Store, error) {
@@ -50,22 +51,34 @@ func New(c Config) (*Store, error) {
 		events.DB().SetMaxOpenConns(c.MaxOpenConns)
 	}
 
-	return &Store{
+	eventChan := make(chan *Event, 100)
+	store := &Store{
 		wg:     &sync.WaitGroup{},
 		auth:   auth.Model(Auth{}),
 		events: events.Model(Event{}),
-	}, nil
+		Events: eventChan,
+	}
+
+	store.wg.Add(1)
+	go func() {
+		for ev := range eventChan {
+			if err := store.newEvent(ev); err != nil {
+				log.Println("store event fail:", err)
+			}
+		}
+		store.wg.Done()
+	}()
+	return store, nil
 }
 
 func (s *Store) Close() {
+	close(s.Events)
 	s.wg.Wait()
 	s.auth.Close()
 	s.events.Close()
 }
 
 func (s *Store) GetLast(name string) (*Auth, error) {
-	s.wg.Add(1)
-	defer s.wg.Done()
 
 	auth := Auth{
 		Name: name,
@@ -93,15 +106,11 @@ func (s *Store) UpdateAuth(auth *Auth) error {
 	}).Update(auth).Error
 }
 
-func (s *Store) NewEvent(ev *Event) error {
-	s.wg.Add(1)
-	defer s.wg.Done()
+func (s *Store) newEvent(ev *Event) error {
 	return s.events.Create(ev).Error
 }
 
 func (s *Store) EachEvents(f func(*Event), since int64, prefix []string) error {
-	s.wg.Add(1)
-	defer s.wg.Done()
 
 	offset := 0
 	limit := 100

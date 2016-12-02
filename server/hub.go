@@ -1,15 +1,40 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/colindev/events/event"
 	"github.com/colindev/events/server/store"
+)
+
+var (
+	// CAuth 登入名稱流前綴
+	CAuth byte = '$'
+	// CLength 事件長度流前綴
+	CLength byte = '='
+	// CAddChan 註冊頻道流前綴
+	CAddChan byte = '+'
+	// CDelChan 移除頻道流前綴
+	CDelChan byte = '-'
+	// CError 錯誤訊息流前綴
+	CError byte = '!'
+	// COk 成功回應流前綴
+	COk byte = '*'
+
+	// OK 成功回應 bytes
+	OK = []byte{79, 75}
+	// EOL 換行bytes
+	EOL = []byte{13, 10}
 )
 
 // Hub 負責管理連線
@@ -20,6 +45,7 @@ type Hub struct {
 	*log.Logger
 }
 
+// NewHub create and return a Hub instance
 func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 
 	sto, err := store.New(store.Config{
@@ -71,7 +97,7 @@ func (h *Hub) auth(c *Conn, p []byte) error {
 }
 
 // Quit 執行退出紀錄
-func (h *Hub) Quit(conn *Conn, t time.Time) {
+func (h *Hub) quit(conn *Conn, t time.Time) {
 	h.Lock()
 	defer h.Unlock()
 	defer conn.conn.Close()
@@ -85,12 +111,30 @@ func (h *Hub) Quit(conn *Conn, t time.Time) {
 	h.Printf("[hub] %s quit: %+v\n", conn.name, auth)
 }
 
-func (h *Hub) Handler(c *Conn) {
+func (h *Hub) publish(e *store.Event) int {
+	h.RLock()
+	defer h.RUnlock()
 
-	defer c.close()
-	defer c.w.Flush()
+	var cnt int
+	for name, conn := range h.m {
+		if conn.isListening(e.Name) {
+			cnt++
+			h.Printf("write to %s: %s\n", name, e.Raw)
+			go conn.writeEvent(e.Raw)
+		}
+	}
+
+	return cnt
+}
+
+func (h *Hub) handle(c *Conn) {
+
 	defer func() {
-		h.Quit(c, time.Now())
+		c.flush()
+		h.quit(c, time.Now())
+		if c.err != nil {
+			h.Println("conn error:", c.err)
+		}
 	}()
 
 	log.Printf("%#v\n", c.conn.RemoteAddr().String())
@@ -103,26 +147,48 @@ func (h *Hub) Handler(c *Conn) {
 		}
 
 		/*
-			$xxx = auth
-			:n = len(event:{...})
-			event:{...}
-			+channal
+			[server]
+			$xxx // 登入名稱
+			=n = len(event:{...}) // 事件長度(int)
+			event:{...} // 事件本體
+			+channal // 註冊頻道
+			-channal // 移除頻道
+
+			[client]
+			!xxx // 錯誤訊息
+			=n // 事件長度(int)
+			event:{...} // 事件本體
+			*OK // 請求處理完成
 		*/
 		switch line[0] {
-		case '$':
+		case CAuth:
 			// 失敗直接斷線
 			if err := h.auth(c, line[1:]); err != nil {
 				log.Println(err)
 				c.w.Write([]byte("!" + err.Error()))
 				return
 			}
-		case '+':
-			c.subscribe(line[1:])
-		case ':':
+		case CAddChan:
+			if channal, err := c.subscribe(line[1:]); err != nil {
+				log.Printf("%s subscribe failed %v\n", c.name, err)
+				c.writeError(err)
+			} else {
+				log.Printf("%s subscribe %s\n", c.name, channal)
+				c.writeOk()
+			}
+		case CDelChan:
+			log.Printf("%s unsubscribe %s\n", c.name, line[1:])
+			if err := c.unsubscribe(line[1:]); err != nil {
+				log.Printf("%s unsubscribe failed %v\n", c.name, err)
+				c.writeError(err)
+			} else {
+				c.writeOk()
+			}
+		case CLength:
 			n, err := parseLen(line[1:])
 			if err != nil {
 				log.Println(err)
-				c.w.Write([]byte("!" + err.Error()))
+				c.writeError(err)
 				return
 			}
 
@@ -130,22 +196,164 @@ func (h *Hub) Handler(c *Conn) {
 
 			p := make([]byte, n)
 			_, err = io.ReadFull(c.r, p)
+			// 去除換行
+			c.readLine()
 			if err != nil {
 				log.Println(err)
-				c.w.Write([]byte("!" + err.Error()))
+				c.writeError(err)
 				return
 			}
 
-			// TODO 存起來
-			eventName, eventData := parseEvent(p)
-			log.Println("receive:", eventName, string(eventData))
-			// 去除換行
-			c.readLine()
-
+			eventName, eventData, err := parseEvent(p)
+			log.Println("receive:", string(eventName), string(eventData), err)
+			if err != nil {
+				c.writeError(err)
+				continue
+			}
+			storeEvent := makeEvent(eventName, eventData, time.Now())
+			go func() {
+				// 排隊寫入
+				h.store.Events <- storeEvent
+			}()
+			h.publish(storeEvent)
 		}
-		if err := c.w.Flush(); err != nil {
-			log.Println(err)
+		c.flush()
+	}
+}
+
+// ListenAndServe listen address and serve conn
+func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string) error {
+
+	network := "tcp"
+
+	tcpAddr, err := net.ResolveTCPAddr(network, addr)
+	if err != nil {
+		return err
+	}
+
+	listener, err := net.ListenTCP(network, tcpAddr)
+	if err != nil {
+		return err
+	}
+
+	cc := make(chan net.Conn, 10)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				log.Println("conn: ", err)
+				continue
+			}
+			cc <- conn
+		}
+	}()
+
+	for {
+		select {
+		case s := <-quit:
+			log.Printf("Receive os.Signal %s\n", s)
+			return listener.Close()
+
+		case conn := <-cc:
+			go h.handle(newConn(conn, time.Now()))
+
 		}
 
 	}
+}
+
+func makeEventStream(event, data []byte) []byte {
+	buf := bytes.NewBuffer(event)
+	buf.WriteByte(':')
+	buf.Write(data)
+
+	return buf.Bytes()
+}
+
+func makeEvent(ev, data []byte, t time.Time) *store.Event {
+	p := makeEventStream(ev, data)
+	e := event.Event(string(ev))
+	return &store.Event{
+		Hash:       fmt.Sprintf("%x", sha1.Sum(p)),
+		Name:       e.String(),
+		Prefix:     e.Type(),
+		Length:     len(p),
+		Raw:        string(p),
+		ReceivedAt: t.Unix(),
+	}
+}
+
+func parseLen(p []byte) (int64, error) {
+
+	raw := string(p)
+
+	if len(p) == 0 {
+		return -1, errors.New("length error:" + raw)
+	}
+
+	var negate bool
+	if p[0] == '-' {
+		negate = true
+		p = p[1:]
+		if len(p) == 0 {
+			return -1, errors.New("length error:" + raw)
+		}
+	}
+
+	var n int64
+	for _, b := range p {
+
+		if b == '\r' || b == '\n' {
+			break
+		}
+		n *= 10
+		if b < '0' || b > '9' {
+			return -1, errors.New("not number:" + string(b))
+		}
+
+		n += int64(b - '0')
+	}
+
+	if negate {
+		n = -n
+	}
+
+	return n, nil
+}
+
+func parseChannal(p []byte) (channal string, err error) {
+
+	// 去除空白/換行
+	channal = strings.TrimSpace(string(p))
+	if channal == "" {
+		err = errors.New("empty channal")
+	}
+
+	return
+}
+
+func parseEvent(p []byte) (ev, data []byte, err error) {
+
+	var sp int
+	box := [30]byte{}
+
+	for i, b := range p {
+		if b == ':' {
+			sp = i
+			break
+		}
+		box[i] = b
+	}
+	ev = box[:sp]
+	data = p[sp+1:]
+
+	if len(ev) > 30 {
+		err = errors.New("event name over 30 char")
+	} else if len(ev) == 0 {
+		err = errors.New("event name is empty")
+	} else if len(data) == 0 {
+		err = errors.New("event data empty")
+	}
+
+	return
 }

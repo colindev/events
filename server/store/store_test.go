@@ -56,9 +56,7 @@ func TestEvent(t *testing.T) {
 			Prefix:     g[i],
 			ReceivedAt: at[i],
 		}
-		if err := s.NewEvent(ev); err != nil {
-			t.Error("NewEvent error: ", err)
-		}
+		s.Events <- ev
 	}
 
 	go func() {
