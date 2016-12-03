@@ -3,27 +3,39 @@ package store
 import (
 	"log"
 	"sync"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
 
+// Config 資料庫設定
 type Config struct {
 	AuthDSN      string
 	EventDSN     string
 	MaxIdleConns int
 	MaxOpenConns int
 	Debug        bool
+	GCDuration   string
 }
 
+// Store 包含 登入者 跟 事件
 type Store struct {
 	wg     *sync.WaitGroup
+	tk     *time.Ticker
 	auth   *gorm.DB
 	events *gorm.DB
 	Events chan *Event
+	quit   chan struct{}
 }
 
+// New return Store instance
 func New(c Config) (*Store, error) {
+
+	gcDuration, err := time.ParseDuration(c.GCDuration)
+	if err != nil {
+		return nil, err
+	}
 
 	auth, err := gorm.Open("sqlite3", c.AuthDSN)
 	if err != nil {
@@ -57,22 +69,46 @@ func New(c Config) (*Store, error) {
 		auth:   auth.Model(Auth{}),
 		events: events.Model(Event{}),
 		Events: eventChan,
+		quit:   make(chan struct{}),
+		tk:     time.NewTicker(gcDuration),
 	}
 
-	store.wg.Add(1)
+	store.wg.Add(2)
 	go func() {
+		defer store.wg.Done()
 		for ev := range eventChan {
 			if err := store.newEvent(ev); err != nil {
 				log.Println("store event fail:", err)
 			}
 		}
-		store.wg.Done()
 	}()
+
+	// GC
+	go func() {
+		defer store.wg.Done()
+		for {
+			select {
+			case t := <-store.tk.C:
+				until := t.Add(-gcDuration)
+				timestamp := until.Unix()
+
+				log.Printf("[store]: run gc until %s (%d)\n", until, timestamp)
+
+				auth.Delete(Auth{}, "disconnected_at < ?", timestamp)
+				events.Delete(Event{}, "received_at < ?", timestamp)
+			case <-store.quit:
+				return
+			}
+		}
+	}()
+
 	return store, nil
 }
 
 func (s *Store) Close() {
 	close(s.Events)
+	s.tk.Stop()
+	s.quit <- struct{}{}
 	s.wg.Wait()
 	s.auth.Close()
 	s.events.Close()

@@ -8,17 +8,20 @@ import (
 func TestAuth(t *testing.T) {
 
 	s, err := New(Config{
-		AuthDSN:  "file::memory:?cache=shared",
-		EventDSN: "file::memory:?cache=shared",
-		Debug:    true,
+		AuthDSN:    "file::memory:?cache=shared",
+		EventDSN:   "file::memory:?cache=shared",
+		Debug:      true,
+		GCDuration: "1m",
 	})
 	if err != nil {
 		t.Error(err)
+		t.Skip()
 	}
 
 	a, err := s.GetLast("game")
 	if err != nil {
 		t.Error(err)
+		t.Skip()
 	}
 	t.Log(a)
 
@@ -40,12 +43,14 @@ func TestAuth(t *testing.T) {
 func TestEvent(t *testing.T) {
 
 	s, err := New(Config{
-		AuthDSN:  "file::memory:?cache=shared",
-		EventDSN: "file::memory:?cache=shared",
-		Debug:    true,
+		AuthDSN:    "file::memory:?cache=shared",
+		EventDSN:   "file::memory:?cache=shared",
+		Debug:      true,
+		GCDuration: "1m",
 	})
 	if err != nil {
 		t.Error(err)
+		t.Skip()
 	}
 
 	at := []int64{4, 3, 2, 1}

@@ -55,9 +55,10 @@ type Hub struct {
 func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 
 	sto, err := store.New(store.Config{
-		Debug:    env.Debug,
-		AuthDSN:  env.AuthDSN,
-		EventDSN: env.EventDSN,
+		Debug:      env.Debug,
+		AuthDSN:    env.AuthDSN,
+		EventDSN:   env.EventDSN,
+		GCDuration: env.GCDuration,
 	})
 	if err != nil {
 		return nil, err
@@ -147,7 +148,7 @@ func (h *Hub) publish(e *store.Event) int {
 }
 
 func (h *Hub) recover(conn *Conn, since int64) error {
-	h.Printf("recover: %+v\n", conn)
+	h.Printf("recover: %+v since %d\n", conn, since)
 
 	if since == 0 {
 		since = conn.lastAuth.DisconnectedAt
@@ -155,6 +156,7 @@ func (h *Hub) recover(conn *Conn, since int64) error {
 
 	h.store.EachEvents(func(e *store.Event) {
 		if conn.isListening(e.Name) {
+			h.Printf("resend %s: %+v\n", conn.name, e)
 			conn.writeEvent(e.Raw)
 		}
 	}, since, nil)
