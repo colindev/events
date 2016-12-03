@@ -12,6 +12,32 @@ import (
 	"github.com/colindev/events/server/store"
 )
 
+var (
+	// CAuth 登入名稱流前綴
+	CAuth byte = '$'
+	// CLength 事件長度流前綴
+	CLength byte = '='
+	// CAddChan 註冊頻道流前綴
+	CAddChan byte = '+'
+	// CDelChan 移除頻道流前綴
+	CDelChan byte = '-'
+	// CError 錯誤訊息流前綴
+	CError byte = '!'
+	// CReply 回應流前綴
+	CReply byte = '*'
+	// CPing client ping
+	CPing byte = '@'
+	// CRecover client 請求過往資料
+	CRecover byte = '>'
+
+	// OK 成功回應 bytes
+	OK = []byte{'O', 'K'}
+	// PONG ...
+	PONG = []byte{'P', 'O', 'N', 'G'}
+	// EOL 換行bytes
+	EOL = []byte{'\r', '\n'}
+)
+
 // Conn 包裝 net.Conn (TCP) 連線
 type Conn struct {
 	*sync.RWMutex
@@ -143,20 +169,19 @@ func (c *Conn) writeLen(n int) error {
 }
 
 func (c *Conn) writeError(e error) {
-
 	c.w.WriteByte(CError)
 	c.w.WriteString(e.Error())
 	c.flush()
 }
 
 func (c *Conn) writeOk() {
-
-	c.w.WriteByte(COk)
+	c.w.WriteByte(CReply)
 	c.w.Write(OK)
 	c.flush()
 }
 
 func (c *Conn) writePong() {
+	c.w.WriteByte(CReply)
 	c.w.Write(PONG)
 	c.flush()
 }

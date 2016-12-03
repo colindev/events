@@ -33,3 +33,8 @@ func (ev Event) Match(event Event) bool {
 func (ev Event) String() string {
 	return string(ev)
 }
+
+// Bytes convert event to []byte
+func (ev Event) Bytes() []byte {
+	return []byte(ev)
+}

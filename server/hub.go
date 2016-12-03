@@ -17,32 +17,6 @@ import (
 	"github.com/colindev/events/server/store"
 )
 
-var (
-	// CAuth 登入名稱流前綴
-	CAuth byte = '$'
-	// CLength 事件長度流前綴
-	CLength byte = '='
-	// CAddChan 註冊頻道流前綴
-	CAddChan byte = '+'
-	// CDelChan 移除頻道流前綴
-	CDelChan byte = '-'
-	// CError 錯誤訊息流前綴
-	CError byte = '!'
-	// COk 成功回應流前綴
-	COk byte = '*'
-	// CPing client ping
-	CPing byte = '@'
-	// CRecover client 請求過往資料
-	CRecover byte = '>'
-
-	// OK 成功回應 bytes
-	OK = []byte{'O', 'K'}
-	// PONG ...
-	PONG = []byte{'P', 'O', 'N', 'G'}
-	// EOL 換行bytes
-	EOL = []byte{'\r', '\n'}
-)
-
 // Hub 負責管理連線
 type Hub struct {
 	*sync.RWMutex
