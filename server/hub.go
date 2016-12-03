@@ -30,11 +30,17 @@ var (
 	CError byte = '!'
 	// COk 成功回應流前綴
 	COk byte = '*'
+	// CPing client ping
+	CPing byte = '@'
+	// CRecover client 請求過往資料
+	CRecover byte = '>'
 
 	// OK 成功回應 bytes
-	OK = []byte{79, 75}
+	OK = []byte{'O', 'K'}
+	// PONG ...
+	PONG = []byte{'P', 'O', 'N', 'G'}
 	// EOL 換行bytes
-	EOL = []byte{13, 10}
+	EOL = []byte{'\r', '\n'}
 )
 
 // Hub 負責管理連線
@@ -140,6 +146,22 @@ func (h *Hub) publish(e *store.Event) int {
 	return cnt
 }
 
+func (h *Hub) recover(conn *Conn, since int64) error {
+	h.Printf("recover: %+v\n", conn)
+
+	if since == 0 {
+		since = conn.lastAuth.DisconnectedAt
+	}
+
+	h.store.EachEvents(func(e *store.Event) {
+		if conn.isListening(e.Name) {
+			conn.writeEvent(e.Raw)
+		}
+	}, since, nil)
+
+	return nil
+}
+
 func (h *Hub) handle(c *Conn) {
 
 	defer func() {
@@ -150,11 +172,9 @@ func (h *Hub) handle(c *Conn) {
 		}
 	}()
 
-	log.Printf("%#v\n", c.conn.RemoteAddr().String())
-
 	for {
 		line, err := c.readLine()
-		log.Printf("<- client: %v = [%s] %v\n", line, line, err)
+		log.Printf("<- client [%s]: %v = [%s] %v\n", c.conn.RemoteAddr().String(), line, line, err)
 		if err != nil {
 			return
 		}
@@ -174,6 +194,8 @@ func (h *Hub) handle(c *Conn) {
 			*OK // 請求處理完成
 		*/
 		switch line[0] {
+		case CPing:
+			c.writePong()
 		case CAuth:
 			// 失敗直接斷線
 			if err := h.auth(c, line[1:]); err != nil {
@@ -181,6 +203,16 @@ func (h *Hub) handle(c *Conn) {
 				c.writeError(err)
 				return
 			}
+
+		case CRecover:
+			n, err := parseLen(line[1:])
+			if err != nil {
+				log.Println(err)
+				c.writeError(err)
+				return
+			}
+			h.recover(c, n)
+
 		case CAddChan:
 			if channal, err := c.subscribe(line[1:]); err != nil {
 				log.Printf("%s subscribe failed %v\n", c.name, err)
@@ -189,6 +221,7 @@ func (h *Hub) handle(c *Conn) {
 				log.Printf("%s subscribe %s\n", c.name, channal)
 				c.writeOk()
 			}
+
 		case CDelChan:
 			log.Printf("%s unsubscribe %s\n", c.name, line[1:])
 			if err := c.unsubscribe(line[1:]); err != nil {
@@ -197,6 +230,7 @@ func (h *Hub) handle(c *Conn) {
 			} else {
 				c.writeOk()
 			}
+
 		case CLength:
 			n, err := parseLen(line[1:])
 			if err != nil {
@@ -231,7 +265,6 @@ func (h *Hub) handle(c *Conn) {
 				c.writeError(err)
 			}
 		}
-		c.flush()
 	}
 }
 
@@ -257,7 +290,7 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string) error {
 				log.Println("conn: ", err)
 				return
 			}
-			h.handle(newConn(conn, time.Now()))
+			go h.handle(newConn(conn, time.Now()))
 		}
 	}()
 

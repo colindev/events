@@ -124,22 +124,6 @@ func (c *Conn) close(err error) error {
 	return err
 }
 
-func (c *Conn) writeError(e error) error {
-
-	c.w.WriteByte(CError)
-	c.w.WriteString(e.Error())
-	_, err := c.w.Write(EOL)
-	return err
-}
-
-func (c *Conn) writeOk() error {
-
-	c.w.WriteByte(COk)
-	c.w.Write(OK)
-	_, err := c.w.Write(EOL)
-	return err
-}
-
 func (c *Conn) writeLen(n int) error {
 
 	i := len(c.lenBox) - 1
@@ -158,14 +142,33 @@ func (c *Conn) writeLen(n int) error {
 	return err
 }
 
+func (c *Conn) writeError(e error) {
+
+	c.w.WriteByte(CError)
+	c.w.WriteString(e.Error())
+	c.flush()
+}
+
+func (c *Conn) writeOk() {
+
+	c.w.WriteByte(COk)
+	c.w.Write(OK)
+	c.flush()
+}
+
+func (c *Conn) writePong() {
+	c.w.Write(PONG)
+	c.flush()
+}
+
 func (c *Conn) writeEvent(e string) {
 	c.writeLen(len(e))
 	c.w.WriteString(e)
-	c.w.Write(EOL)
 	c.flush()
 }
 
 func (c *Conn) flush() error {
+	c.w.Write(EOL)
 	if err := c.w.Flush(); err != nil {
 		return c.close(err)
 	}
