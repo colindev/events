@@ -111,6 +111,19 @@ func (h *Hub) quit(conn *Conn, t time.Time) {
 	h.Printf("[hub] %s quit: %+v\n", conn.name, auth)
 }
 
+func (h *Hub) quitAll(t time.Time) {
+	m := map[string]*Conn{}
+	h.RLock()
+	for n, c := range h.m {
+		m[n] = c
+	}
+	h.RUnlock()
+
+	for _, c := range m {
+		h.quit(c, t)
+	}
+}
+
 func (h *Hub) publish(e *store.Event) int {
 	h.RLock()
 	defer h.RUnlock()
@@ -141,7 +154,7 @@ func (h *Hub) handle(c *Conn) {
 
 	for {
 		line, err := c.readLine()
-		log.Printf("<- client: %v = %s %v\n", line, line, err)
+		log.Printf("<- client: %v = [%s] %v\n", line, line, err)
 		if err != nil {
 			return
 		}
@@ -165,7 +178,7 @@ func (h *Hub) handle(c *Conn) {
 			// 失敗直接斷線
 			if err := h.auth(c, line[1:]); err != nil {
 				log.Println(err)
-				c.w.Write([]byte("!" + err.Error()))
+				c.writeError(err)
 				return
 			}
 		case CAddChan:
@@ -195,6 +208,7 @@ func (h *Hub) handle(c *Conn) {
 			log.Printf("length: %d\n", n)
 
 			p := make([]byte, n)
+			log.Printf("read: %+v = [%s]\n", p, p)
 			_, err = io.ReadFull(c.r, p)
 			// 去除換行
 			c.readLine()
@@ -206,16 +220,16 @@ func (h *Hub) handle(c *Conn) {
 
 			eventName, eventData, err := parseEvent(p)
 			log.Println("receive:", string(eventName), string(eventData), err)
-			if err != nil {
+			if err == nil {
+				storeEvent := makeEvent(eventName, eventData, time.Now())
+				go func() {
+					// 排隊寫入
+					h.store.Events <- storeEvent
+				}()
+				h.publish(storeEvent)
+			} else {
 				c.writeError(err)
-				continue
 			}
-			storeEvent := makeEvent(eventName, eventData, time.Now())
-			go func() {
-				// 排隊寫入
-				h.store.Events <- storeEvent
-			}()
-			h.publish(storeEvent)
 		}
 		c.flush()
 	}
@@ -236,30 +250,22 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string) error {
 		return err
 	}
 
-	cc := make(chan net.Conn, 10)
 	go func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
 				log.Println("conn: ", err)
-				continue
+				return
 			}
-			cc <- conn
+			h.handle(newConn(conn, time.Now()))
 		}
 	}()
 
-	for {
-		select {
-		case s := <-quit:
-			log.Printf("Receive os.Signal %s\n", s)
-			return listener.Close()
+	s := <-quit
+	log.Printf("Receive os.Signal %s\n", s)
+	h.quitAll(time.Now())
+	return listener.Close()
 
-		case conn := <-cc:
-			go h.handle(newConn(conn, time.Now()))
-
-		}
-
-	}
 }
 
 func makeEventStream(event, data []byte) []byte {

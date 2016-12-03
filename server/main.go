@@ -43,7 +43,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	quit := make(chan os.Signal, 1)
+	quit := make(chan os.Signal, 0)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT)
 
 	if err := hub.ListenAndServe(quit, env.Addr); err != nil {
