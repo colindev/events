@@ -15,6 +15,6 @@ func TestConn_IsListening(t *testing.T) {
 	}
 
 	if !c.isListening("game.start") {
-		t.Error("match test fail:", c.channals[ind])
+		t.Error("match test fail:", c.chs[ind])
 	}
 }

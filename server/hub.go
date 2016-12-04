@@ -20,7 +20,10 @@ import (
 // Hub 負責管理連線
 type Hub struct {
 	*sync.RWMutex
-	m     map[string]*Conn
+	// 需作歷程管理
+	m map[string]*Conn
+	// 不須作歷程管理
+	g     map[*Conn]bool
 	store *store.Store
 	*log.Logger
 }
@@ -41,6 +44,7 @@ func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 	return &Hub{
 		RWMutex: &sync.RWMutex{},
 		m:       map[string]*Conn{},
+		g:       map[*Conn]bool{},
 		store:   sto,
 		Logger:  logger,
 	}, nil
@@ -52,11 +56,13 @@ func (h *Hub) auth(c *Conn, p []byte) error {
 	h.Lock()
 	defer h.Unlock()
 
-	if len(p) <= 1 {
-		return errors.New("empty id")
-	}
-
 	name := strings.TrimSpace(string(p))
+
+	// 匿名登入
+	if name == "" {
+		h.g[c] = true
+		return nil
+	}
 
 	if _, exists := h.m[name]; exists {
 		return fmt.Errorf("hub: duplicate auth name(%s)", name)
@@ -83,6 +89,11 @@ func (h *Hub) quit(conn *Conn, t time.Time) {
 	defer h.Unlock()
 	defer conn.conn.Close()
 
+	if conn.name == "" {
+		delete(h.g, conn)
+		return
+	}
+
 	delete(h.m, conn.name)
 	auth := conn.GetAuth()
 	auth.DisconnectedAt = t.Unix()
@@ -93,14 +104,17 @@ func (h *Hub) quit(conn *Conn, t time.Time) {
 }
 
 func (h *Hub) quitAll(t time.Time) {
-	m := map[string]*Conn{}
+	m := map[*Conn]bool{}
 	h.RLock()
-	for n, c := range h.m {
-		m[n] = c
+	for _, c := range h.m {
+		m[c] = true
+	}
+	for c := range h.g {
+		m[c] = true
 	}
 	h.RUnlock()
 
-	for _, c := range m {
+	for c := range m {
 		h.quit(c, t)
 	}
 }
@@ -118,6 +132,14 @@ func (h *Hub) publish(e *store.Event) int {
 		}
 	}
 
+	for conn := range h.g {
+		if conn.isListening(e.Name) {
+			cnt++
+			h.Printf("write to ghost: %s\n", e.Raw)
+			go conn.writeEvent(e.Raw)
+		}
+	}
+
 	return cnt
 }
 
@@ -128,12 +150,17 @@ func (h *Hub) recover(conn *Conn, since int64) error {
 		since = conn.lastAuth.DisconnectedAt
 	}
 
+	prefix := []string{}
+	for ev := range conn.chs {
+		prefix = append(prefix, event.Event(ev).Type())
+	}
+
 	h.store.EachEvents(func(e *store.Event) {
 		if conn.isListening(e.Name) {
 			h.Printf("resend %s: %+v\n", conn.name, e)
 			conn.writeEvent(e.Raw)
 		}
-	}, since, nil)
+	}, since, prefix)
 
 	return nil
 }
@@ -155,6 +182,11 @@ func (h *Hub) handle(c *Conn) {
 			return
 		}
 
+		if line == nil {
+			// drop empty line
+			continue
+		}
+
 		/*
 			[server]
 			$xxx // 登入名稱
@@ -170,8 +202,6 @@ func (h *Hub) handle(c *Conn) {
 			*OK // 請求處理完成
 		*/
 		switch line[0] {
-		case CPing:
-			c.writePong()
 		case CAuth:
 			// 失敗直接斷線
 			if err := h.auth(c, line[1:]); err != nil {
@@ -207,7 +237,7 @@ func (h *Hub) handle(c *Conn) {
 				c.writeOk()
 			}
 
-		case CLength:
+		case CPing:
 			n, err := parseLen(line[1:])
 			if err != nil {
 				log.Println(err)
@@ -215,11 +245,34 @@ func (h *Hub) handle(c *Conn) {
 				return
 			}
 
-			log.Printf("length: %d\n", n)
+			log.Printf("ping length: %d\n", n)
 
 			p := make([]byte, n)
-			log.Printf("read: %+v = [%s]\n", p, p)
 			_, err = io.ReadFull(c.r, p)
+			log.Printf("read: %+v = [%s]\n", p, p)
+			// 去除換行
+			c.readLine()
+			if err != nil {
+				log.Println(err)
+				c.writeError(err)
+				return
+			}
+
+			c.writePong(p)
+
+		case CEvent:
+			n, err := parseLen(line[1:])
+			if err != nil {
+				log.Println(err)
+				c.writeError(err)
+				return
+			}
+
+			log.Printf("event length: %d\n", n)
+
+			p := make([]byte, n)
+			_, err = io.ReadFull(c.r, p)
+			log.Printf("read: %+v = [%s]\n", p, p)
 			// 去除換行
 			c.readLine()
 			if err != nil {

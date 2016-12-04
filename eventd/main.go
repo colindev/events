@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/listener"
-	"github.com/colindev/events/redis"
 )
 
 type channels []interface{}
@@ -26,18 +26,20 @@ func main() {
 
 	var (
 		handler      event.Handler
+		appName      string
 		listenAddr   string
 		listenEvents = channels{}
 		cli          = flag.CommandLine
 	)
 
-	cli.StringVar(&listenAddr, "listen", "127.0.0.1:6379", "listen event address")
+	cli.StringVar(&appName, "app", "", "app name")
+	cli.StringVar(&listenAddr, "listen", "127.0.0.1:8000", "listen event address")
 	cli.Var(&listenEvents, "event", "listen events")
 	cli.Parse(os.Args[1:])
 
-	li := listener.New(redis.NewPool(func() (redis.Conn, error) {
-		return redis.Dial("tcp", listenAddr)
-	}, 10))
+	li := listener.New(func() (client.Conn, error) {
+		return client.Dial(appName, listenAddr)
+	})
 
 	args := cli.Args()
 	switch len(args) {

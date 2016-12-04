@@ -22,6 +22,9 @@ func init() {
 	flag.Parse()
 
 	log.SetFlags(logFlags)
+}
+
+func main() {
 	if err := godotenv.Overload(env.path); err != nil {
 		log.Fatal(err)
 	}
@@ -33,9 +36,6 @@ func init() {
 		logFlags = log.LstdFlags
 		log.SetFlags(logFlags)
 	}
-}
-
-func main() {
 
 	l := log.New(os.Stdout, "[hub]", logFlags)
 	hub, err := NewHub(env, l)

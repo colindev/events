@@ -2,11 +2,12 @@ package listener
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 
+	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
-	"github.com/colindev/events/redis"
 )
 
 type (
@@ -23,8 +24,9 @@ type (
 	listener struct {
 		wg *sync.WaitGroup
 		*sync.RWMutex
-		pool           redis.Pool
-		psc            redis.PubSubConn
+		conn           client.Conn
+		chs            []string
+		dial           func() (client.Conn, error)
 		running        bool
 		events         map[event.Event][]event.Handler
 		triggerRecover func(interface{})
@@ -39,11 +41,11 @@ var (
 )
 
 // New return Listener instansce
-func New(pool redis.Pool) Listener {
+func New(dial func() (client.Conn, error)) Listener {
 	return &listener{
 		wg:      &sync.WaitGroup{},
 		RWMutex: &sync.RWMutex{},
-		pool:    pool,
+		dial:    dial,
 		events:  make(map[event.Event][]event.Handler),
 	}
 }
@@ -80,25 +82,54 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 		l.running = false
 	}()
 
-	conn := l.pool.Get()
+	// 建立連線
+	conn, err := l.dial()
+	if err != nil {
+		return err
+	}
 	defer conn.Close()
-	l.psc.Conn = conn
-	l.psc.PSubscribe(channels...)
+	l.conn = conn
+
+	// 登入名稱
+	if err := conn.Auth(); err != nil {
+		return err
+	}
+
+	// 轉換頻道
+	convChans := []string{}
+	for _, c := range channels {
+		switch v := c.(type) {
+		case string:
+			convChans = append(convChans, v)
+		case event.Event:
+			convChans = append(convChans, string(v))
+		case []byte:
+			convChans = append(convChans, string(v))
+		default:
+			convChans = append(convChans, fmt.Sprintf("%v", v))
+		}
+	}
+
+	if err := conn.Subscribe(convChans...); err != nil {
+		return err
+	}
+	l.chs = convChans
 
 	for {
-		m := l.psc.Receive()
-		switch m := m.(type) {
-		case redis.Message:
-			go l.Trigger(event.Event(m.Channel), event.RawData(m.Data))
-		case redis.PMessage:
-			go l.Trigger(event.Event(m.Channel), event.RawData(m.Data))
-		case redis.Pong:
-			go l.Trigger(event.PONG, event.RawData(m.Data))
-		case redis.Subscription:
-			log.Println("[events]", m)
-		case error:
-			return m
+		m, err := conn.Receive()
+		if err != nil {
+			return err
 		}
+
+		switch m := m.(type) {
+		case *client.Event:
+			go l.Trigger(m.Name, m.Data)
+		case *client.Reply:
+			log.Println("[event] reply ", m.String())
+		default:
+			log.Printf("[event] unexpect %#v\n", m)
+		}
+
 	}
 }
 
@@ -146,18 +177,18 @@ func (l *listener) findHandlers(target event.Event) []event.Handler {
 }
 
 func (l *listener) Ping(msg string) error {
-	if l.psc.Conn == nil {
+	if l.conn == nil {
 		return ErrListenerNotRunning
 	}
 
-	return l.psc.Ping(msg)
+	return l.conn.Ping(msg)
 }
 
 func (l *listener) Stop() error {
 	l.RLock()
 	defer l.RUnlock()
 	if l.running {
-		return l.psc.PUnsubscribe()
+		return l.conn.Unsubscribe(l.chs...)
 	}
 
 	l.wg.Wait()

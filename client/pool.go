@@ -138,7 +138,7 @@ func (p *pool) put(c Conn) error {
 	return c.Close()
 }
 
-// 只能 Fire, Close, Receive
+// 只能 Fire, Close, Receive, Ping
 // 不處理其他方法,省略清除原本通訊設定
 type maskConn struct {
 	p *pool
@@ -147,6 +147,9 @@ type maskConn struct {
 
 func (m *maskConn) Fire(ev event.Event, rd event.RawData) error {
 	return m.c.Fire(ev, rd)
+}
+func (m *maskConn) Ping(s string) error {
+	return m.c.Ping(s)
 }
 func (m *maskConn) Receive() (interface{}, error) {
 	return m.c.Receive()
@@ -177,6 +180,7 @@ func (err *errConn) Fire(event.Event, event.RawData) error { return err.err }
 func (err *errConn) Receive() (interface{}, error)         { return nil, err.err }
 func (err *errConn) Close() error                          { return err.err }
 func (err *errConn) Auth() error                           { return err.err }
+func (err *errConn) Ping(string) error                     { return err.err }
 func (err *errConn) Recover() error                        { return err.err }
 func (err *errConn) RecoverSince(int64) error              { return err.err }
 func (err *errConn) Subscribe(...string) error             { return err.err }

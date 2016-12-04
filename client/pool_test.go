@@ -22,6 +22,9 @@ func (m *fake) Close() error {
 func (m *fake) Auth() error {
 	return nil
 }
+func (m *fake) Ping(string) error {
+	return nil
+}
 func (m *fake) Recover() error {
 	return nil
 }

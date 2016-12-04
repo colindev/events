@@ -19,10 +19,11 @@ var (
 	CAddChan byte = '+'
 	CDelChan byte = '-'
 	CReply   byte = '*'
-	CLength  byte = '='
+	CEvent   byte = '='
+	CPing    byte = '@'
+	CPong    byte = '@'
 
-	PING = []byte{'@'}
-	EOL  = []byte{'\r', '\n'}
+	EOL = []byte{'\r', '\n'}
 )
 
 // Reply 包裝回應內容
@@ -49,6 +50,7 @@ type Conn interface {
 	Subscribe(...string) error
 	Unsubscribe(...string) error
 	Fire(event.Event, event.RawData) error
+	Ping(string) error
 	Receive() (interface{}, error)
 }
 
@@ -86,12 +88,24 @@ func (c *conn) Close() error {
 }
 
 func (c *conn) readLine() ([]byte, error) {
-	return c.r.ReadSlice('\n')
+	b, err := c.r.ReadSlice('\n')
+	if err != nil {
+		return nil, err
+	}
+
+	i := len(b) - 2
+	if i < 0 || b[i] != '\r' {
+		return nil, errors.New("empty line")
+	}
+
+	return b[:i], nil
 }
 
 func (c *conn) Receive() (ret interface{}, err error) {
 
 	line, err := c.readLine()
+	// TODO 隔離測試時 conn 是 nil
+	// log.Printf("<- client [%s]: %v = [%s] %v\n", c.conn.RemoteAddr().String(), line, line, err)
 	if err != nil {
 		return
 	}
@@ -99,7 +113,31 @@ func (c *conn) Receive() (ret interface{}, err error) {
 	switch line[0] {
 	case CReply:
 		ret = &Reply{strings.TrimSpace(string(line[1:]))}
-	case CLength:
+
+	case CPong:
+		n, e := parseLen(line[1:])
+		if e != nil {
+			err = e
+			return
+		}
+		//log.Printf("length: %d\n", n)
+
+		p := make([]byte, n)
+		_, e = io.ReadFull(c.r, p)
+		//log.Printf("read: %+v = [%s]\n", p, p)
+		// 去除換行
+		c.readLine()
+		if e != nil {
+			err = e
+			return
+		}
+
+		ret = &Event{
+			Name: event.PONG,
+			Data: p,
+		}
+
+	case CEvent:
 		n, e := parseLen(line[1:])
 		if e != nil {
 			err = e
@@ -128,27 +166,28 @@ func (c *conn) Receive() (ret interface{}, err error) {
 		}
 		ret = &Event{
 			Name: event.Event(eventName),
-			Data: event.RawData(eventData),
+			Data: eventData,
 		}
 	}
 
 	return ret, err
 }
 
-func (c *conn) writeLen(n int) error {
-	c.w.WriteByte(CLength)
+func (c *conn) writeLen(prefix byte, n int) error {
+	c.w.WriteByte(prefix)
 	c.w.WriteString(strconv.Itoa(n))
 	_, err := c.w.Write(EOL)
 	return err
 }
 
 func (c *conn) writeEvent(p []byte) error {
-	c.writeLen(len(p))
+	c.writeLen(CEvent, len(p))
 	c.w.Write(p)
 	return c.flush()
 }
 
 func (c *conn) Auth() error {
+
 	c.w.WriteByte(CAuth)
 	c.w.WriteString(c.name)
 	return c.flush()
@@ -166,6 +205,7 @@ func (c *conn) RecoverSince(i int64) error {
 }
 
 func (c *conn) Subscribe(chans ...string) error {
+
 	for _, ch := range chans {
 		c.w.WriteByte(CAddChan)
 		c.w.WriteString(ch)
@@ -191,6 +231,13 @@ func (c *conn) Fire(ev event.Event, rd event.RawData) error {
 	buf.Write(rd.Bytes())
 
 	return c.writeEvent(buf.Bytes())
+}
+
+func (c *conn) Ping(m string) error {
+	c.writeLen(CPing, len(m))
+	c.w.WriteString(m)
+
+	return c.flush()
 }
 
 func (c *conn) flush() error {

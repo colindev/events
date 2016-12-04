@@ -15,8 +15,8 @@ import (
 var (
 	// CAuth 登入名稱流前綴
 	CAuth byte = '$'
-	// CLength 事件長度流前綴
-	CLength byte = '='
+	// CEvent 事件長度流前綴
+	CEvent byte = '='
 	// CAddChan 註冊頻道流前綴
 	CAddChan byte = '+'
 	// CDelChan 移除頻道流前綴
@@ -27,6 +27,8 @@ var (
 	CReply byte = '*'
 	// CPing client ping
 	CPing byte = '@'
+	// CPong reply ping
+	CPong byte = '@'
 	// CRecover client 請求過往資料
 	CRecover byte = '>'
 
@@ -41,11 +43,11 @@ var (
 // Conn 包裝 net.Conn (TCP) 連線
 type Conn struct {
 	*sync.RWMutex
-	conn     net.Conn
-	w        *bufio.Writer
-	r        *bufio.Reader
-	err      error
-	channals map[string]*regexp.Regexp
+	conn net.Conn
+	w    *bufio.Writer
+	r    *bufio.Reader
+	err  error
+	chs  map[string]*regexp.Regexp
 	// recover events 用
 	lastAuth    *store.Auth
 	connectedAt int64
@@ -60,7 +62,7 @@ func newConn(conn net.Conn, t time.Time) *Conn {
 		conn:        conn,
 		w:           bufio.NewWriter(conn),
 		r:           bufio.NewReader(conn),
-		channals:    map[string]*regexp.Regexp{},
+		chs:         map[string]*regexp.Regexp{},
 		connectedAt: t.Unix(),
 	}
 }
@@ -80,7 +82,19 @@ func (c *Conn) GetAuth() *store.Auth {
 }
 
 func (c *Conn) readLine() ([]byte, error) {
-	return c.r.ReadSlice('\n')
+	b, err := c.r.ReadSlice('\n')
+	if err != nil {
+		return nil, err
+	}
+
+	i := len(b) - 2
+	if i < 0 {
+		return nil, nil
+	} else if b[i] != '\r' {
+		i = i + 1
+	}
+
+	return b[:i], nil
 }
 
 func (c *Conn) subscribe(p []byte) (string, error) {
@@ -91,7 +105,7 @@ func (c *Conn) subscribe(p []byte) (string, error) {
 	// 去除空白/換行
 	ind := strings.TrimSpace(string(p))
 	// 判斷是否重複註冊
-	if _, exists := c.channals[ind]; exists {
+	if _, exists := c.chs[ind]; exists {
 		// 容錯重複註冊
 		return ind, nil
 	}
@@ -105,7 +119,7 @@ func (c *Conn) subscribe(p []byte) (string, error) {
 		return ind, err
 	}
 
-	c.channals[ind] = re
+	c.chs[ind] = re
 	return ind, nil
 }
 
@@ -116,11 +130,11 @@ func (c *Conn) unsubscribe(p []byte) error {
 	// 去除空白/換行
 	ind := strings.TrimSpace(string(p))
 	// 判斷是否存在
-	if _, exists := c.channals[ind]; exists {
-		return fmt.Errorf("channal(%s) not found", ind)
+	if _, exists := c.chs[ind]; !exists {
+		return fmt.Errorf("channel(%s) not found", ind)
 	}
 
-	delete(c.channals, ind)
+	delete(c.chs, ind)
 
 	return nil
 }
@@ -131,7 +145,7 @@ func (c *Conn) isListening(eventName string) bool {
 
 	ev := []byte(eventName)
 
-	for _, re := range c.channals {
+	for _, re := range c.chs {
 		if re.Match(ev) {
 			return true
 		}
@@ -150,7 +164,7 @@ func (c *Conn) close(err error) error {
 	return err
 }
 
-func (c *Conn) writeLen(n int) error {
+func (c *Conn) writeLen(prefix byte, n int) error {
 
 	i := len(c.lenBox) - 1
 	for {
@@ -162,7 +176,7 @@ func (c *Conn) writeLen(n int) error {
 		}
 	}
 
-	c.w.WriteByte(CLength)
+	c.w.WriteByte(prefix)
 	c.w.Write(c.lenBox[i+1:])
 	_, err := c.w.Write(EOL)
 	return err
@@ -180,14 +194,14 @@ func (c *Conn) writeOk() {
 	c.flush()
 }
 
-func (c *Conn) writePong() {
-	c.w.WriteByte(CReply)
-	c.w.Write(PONG)
+func (c *Conn) writePong(ping []byte) {
+	c.writeLen(CPong, len(ping))
+	c.w.Write(ping)
 	c.flush()
 }
 
 func (c *Conn) writeEvent(e string) {
-	c.writeLen(len(e))
+	c.writeLen(CEvent, len(e))
 	c.w.WriteString(e)
 	c.flush()
 }

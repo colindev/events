@@ -5,14 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
-	"github.com/colindev/events/redis"
 )
 
 func TestListener(t *testing.T) {
-	l := New(redis.NewPool(func() (redis.Conn, error) {
-		return redis.Dial("tcp", "127.0.0.1:6379")
-	}, 10))
+	l := New(func() (client.Conn, error) { return nil, nil })
 
 	fn := func(ev event.Event, rd event.RawData) {
 		rand.Seed(int64(time.Now().Nanosecond()))
