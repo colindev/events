@@ -3,7 +3,6 @@ package events
 import (
 	"log"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/colindev/events/client"
@@ -16,7 +15,7 @@ func init() {
 	log.SetFlags(log.Lshortfile)
 }
 
-func TestListenerAndLauncher(t *testing.T) {
+func Example() {
 
 	wg := &sync.WaitGroup{}
 
@@ -26,10 +25,10 @@ func TestListenerAndLauncher(t *testing.T) {
 
 	li := listener.New(dial)
 	go li.On(event.Event("test.*"), func(ev event.Event, rd event.RawData) {
-		t.Log(ev, rd.String())
+		log.Println(ev, rd.String())
 		wg.Done()
 	}).On(event.PONG, func(ev event.Event, rd event.RawData) {
-		t.Log(ev, rd.String())
+		log.Println(ev, rd.String())
 		wg.Done()
 	}).Run("test.*")
 
@@ -37,7 +36,7 @@ func TestListenerAndLauncher(t *testing.T) {
 	time.Sleep(time.Millisecond * 50)
 
 	if err := li.Ping("x"); err != nil {
-		t.Error(err)
+		log.Println(err)
 		return
 	}
 
