@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -105,9 +106,11 @@ func (c *conn) Receive() (ret interface{}, err error) {
 
 	line, err := c.readLine()
 	// TODO 隔離測試時 conn 是 nil
-	// log.Printf("<- client [%s]: %v = [%s] %v\n", c.conn.RemoteAddr().String(), line, line, err)
 	if err != nil {
 		return
+	}
+	if len(line) == 0 {
+		log.Printf("<- client [%s]: %v = [%s] %v\n", c.conn.RemoteAddr().String(), line, line, err)
 	}
 
 	switch line[0] {

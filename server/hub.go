@@ -211,7 +211,13 @@ func (h *Hub) handle(c *Conn) {
 			}
 
 		case CRecover:
-			n, err := parseLen(line[1:])
+			var (
+				n   int64
+				err error
+			)
+			if len(line[1:]) > 0 {
+				n, err = parseLen(line[1:])
+			}
 			if err != nil {
 				log.Println(err)
 				c.writeError(err)

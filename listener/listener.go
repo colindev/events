@@ -14,6 +14,7 @@ type (
 	// Listener responsible for trigger match handlers
 	Listener interface {
 		On(event.Event, ...event.Handler) Listener
+		Recover() error
 		Trigger(event.Event, event.RawData)
 		TriggerRecover(func(interface{}))
 		Run(channels ...interface{}) error
@@ -34,6 +35,9 @@ type (
 )
 
 var (
+	// Connected 成功建立連線後觸發
+	Connected event.Event = "connected"
+
 	// ErrListenerAlreadyRunning prevent run second time
 	ErrListenerAlreadyRunning = errors.New("[events] Listener already running")
 	// ErrListenerNotRunning prevent access nil resource
@@ -115,6 +119,8 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	}
 	l.chs = convChans
 
+	l.Trigger(Connected, nil)
+
 	for {
 		m, err := conn.Receive()
 		if err != nil {
@@ -131,6 +137,10 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 		}
 
 	}
+}
+
+func (l *listener) Recover() error {
+	return l.conn.Recover()
 }
 
 func (l *listener) Trigger(ev event.Event, rd event.RawData) {
