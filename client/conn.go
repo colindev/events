@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -26,6 +25,7 @@ var (
 	EOL  = []byte{'\r', '\n'}
 )
 
+// Reply 包裝回應內容
 type Reply struct {
 	s string
 }
@@ -34,12 +34,13 @@ func (r *Reply) String() string {
 	return r.s
 }
 
+// Event 包裝事件名稱跟資料
 type Event struct {
 	Name event.Event
 	Data event.RawData
 }
 
-// ---
+// Conn 包裝 net.Conn
 type Conn interface {
 	Close() error
 	Recover() error
@@ -63,6 +64,7 @@ type conn struct {
 	pending int
 }
 
+// New 回傳 conn 實體物件
 func New(name, addr string) (Conn, error) {
 
 	c, err := net.Dial("tcp", addr)
@@ -103,11 +105,11 @@ func (c *conn) Receive() (ret interface{}, err error) {
 			err = e
 			return
 		}
-		log.Printf("length: %d\n", n)
+		//log.Printf("length: %d\n", n)
 
 		p := make([]byte, n)
-		log.Printf("read: %+v = [%s]\n", p, p)
 		_, e = io.ReadFull(c.r, p)
+		//log.Printf("read: %+v = [%s]\n", p, p)
 		// 去除換行
 		c.readLine()
 		if e != nil {
@@ -120,7 +122,7 @@ func (c *conn) Receive() (ret interface{}, err error) {
 			err = e
 			return
 		}
-		log.Println("receive:", string(eventName), string(eventData), e)
+		//log.Println("receive:", string(eventName), string(eventData), e)
 		if e != nil {
 			return
 		}
