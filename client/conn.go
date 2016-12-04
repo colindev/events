@@ -64,8 +64,8 @@ type conn struct {
 	pending int
 }
 
-// New 回傳 conn 實體物件
-func New(name, addr string) (Conn, error) {
+// Dial 回傳 conn 實體物件
+func Dial(name, addr string) (Conn, error) {
 
 	c, err := net.Dial("tcp", addr)
 	if err != nil {
