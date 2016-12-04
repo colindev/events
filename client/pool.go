@@ -10,7 +10,7 @@ import (
 
 // Pool 連線池
 type Pool interface {
-	Get() (Conn, error)
+	Get() Conn
 	ActiveConn() int
 	MaxActive(int)
 }
@@ -43,14 +43,14 @@ func (p *pool) MaxActive(n int) {
 	p.mu.Unlock()
 }
 
-func (p *pool) Get() (Conn, error) {
+func (p *pool) Get() Conn {
 
 	c, err := p.get()
 	if err != nil {
-		return nil, err
+		return &errConn{err}
 	}
 
-	return &maskConn{p: p, c: c}, nil
+	return &maskConn{p: p, c: c}
 }
 
 func (p *pool) ActiveConn() int {
@@ -109,6 +109,8 @@ func (p *pool) get() (Conn, error) {
 }
 
 func (p *pool) put(c Conn) error {
+	// TODO 處理錯誤連線
+	// TODO 評估處理超時連線
 	p.mu.Lock()
 
 	if c == nil {
@@ -167,3 +169,15 @@ func (m *maskConn) Subscribe(...string) error {
 func (m *maskConn) Unsubscribe(...string) error {
 	return errors.New("pooled conn not support Unsubscribe()")
 }
+
+// errConn
+type errConn struct{ err error }
+
+func (err *errConn) Fire(event.Event, event.RawData) error { return err.err }
+func (err *errConn) Receive() (interface{}, error)         { return nil, err.err }
+func (err *errConn) Close() error                          { return err.err }
+func (err *errConn) Auth() error                           { return err.err }
+func (err *errConn) Recover() error                        { return err.err }
+func (err *errConn) RecoverSince(int64) error              { return err.err }
+func (err *errConn) Subscribe(...string) error             { return err.err }
+func (err *errConn) Unsubscribe(...string) error           { return err.err }

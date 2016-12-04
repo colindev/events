@@ -1,8 +1,8 @@
 package launcher
 
 import (
+	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
-	"github.com/colindev/events/redis"
 )
 
 type (
@@ -12,12 +12,12 @@ type (
 	}
 
 	launcher struct {
-		pool redis.Pool
+		pool client.Pool
 	}
 )
 
 // New return a Launcher instance
-func New(pool redis.Pool) Launcher {
+func New(pool client.Pool) Launcher {
 	return &launcher{pool}
 }
 

@@ -49,11 +49,7 @@ func Test(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		go func(i int) {
-			c, err := p.Get()
-			if err != nil {
-				t.Error(err)
-				return
-			}
+			c := p.Get()
 			c.(*maskConn).c.(*fake).n = i
 			ev := event.Event("x." + strconv.Itoa(i))
 			run <- ev
