@@ -26,7 +26,5 @@ func (l *launcher) Fire(ev event.Event, rd event.RawData) (err error) {
 	conn := l.pool.Get()
 	defer conn.Close()
 
-	_, err = conn.Do("PUBLISH", ev.String(), rd.String())
-
-	return err
+	return conn.Fire(ev, rd)
 }
