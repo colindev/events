@@ -39,7 +39,7 @@ func TestConnReceive(t *testing.T) {
 }
 
 func TestParseLen(t *testing.T) {
-	n, err := parseLen([]byte("=12345678987654321"))
+	n, err := parseLen([]byte("12345678987654321"))
 	if err != nil {
 		t.Error(err)
 	}
