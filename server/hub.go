@@ -18,7 +18,6 @@ import (
 
 // Hub 負責管理連線
 type Hub struct {
-	env *Env
 	*sync.RWMutex
 	// 需作歷程管理
 	m map[string]Conn
@@ -42,7 +41,6 @@ func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 	}
 
 	return &Hub{
-		env:     env,
 		RWMutex: &sync.RWMutex{},
 		m:       map[string]Conn{},
 		g:       map[Conn]bool{},
