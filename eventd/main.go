@@ -33,7 +33,7 @@ func main() {
 		listenAddr    string
 		listenEvents  = channels{}
 		launcherEvent string
-		doRecover     bool
+		recoverSince  int64
 
 		cli = flag.CommandLine
 	)
@@ -42,7 +42,7 @@ func main() {
 	cli.StringVar(&listenAddr, "listen", "127.0.0.1:8000", "listen event address")
 	cli.StringVar(&launcherEvent, "fire", "", "fire event {name}:{data}")
 	cli.Var(&listenEvents, "event", "listen events")
-	cli.BoolVar(&doRecover, "r", false, "request recover")
+	cli.Int64Var(&recoverSince, "r", 0, "request recover since")
 	cli.Parse(os.Args[1:])
 
 	dial := func() (client.Conn, error) {
@@ -76,7 +76,7 @@ func main() {
 	}
 
 	li.On(listener.Connected, func(ev event.Event, _ event.RawData) {
-		li.Recover()
+		li.Recover(recoverSince)
 	}).Run(listenEvents...)
 }
 

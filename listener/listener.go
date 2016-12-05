@@ -14,7 +14,7 @@ type (
 	// Listener responsible for trigger match handlers
 	Listener interface {
 		On(event.Event, ...event.Handler) Listener
-		Recover() error
+		Recover(int64) error
 		Trigger(event.Event, event.RawData)
 		TriggerRecover(func(interface{}))
 		Run(channels ...interface{}) error
@@ -139,8 +139,14 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	}
 }
 
-func (l *listener) Recover() error {
-	return l.conn.Recover()
+// Recover 包裝 conn Recover / RecoverSince
+// i 小於等於 0 時, 調用 conn.Recover() 讓 server 處理還原時間點
+// i 大於 0 時, 調用 onn.RecoverSince(timestamp) 由 client 決定還原時間點
+func (l *listener) Recover(i int64) error {
+	if i <= 0 {
+		return l.conn.Recover()
+	}
+	return l.conn.RecoverSince(i)
 }
 
 func (l *listener) Trigger(ev event.Event, rd event.RawData) {

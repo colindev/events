@@ -148,6 +148,10 @@ func (h *Hub) recover(conn *Conn, since int64) error {
 
 	if since == 0 {
 		since = conn.lastAuth.DisconnectedAt
+		// NOTE 沒上一次的登入紀錄時不重送全部訊息
+		if since == 0 {
+			return nil
+		}
 	}
 
 	prefix := []string{}
@@ -393,17 +397,6 @@ func parseLen(p []byte) (int64, error) {
 	}
 
 	return n, nil
-}
-
-func parseChannal(p []byte) (channal string, err error) {
-
-	// 去除空白/換行
-	channal = strings.TrimSpace(string(p))
-	if channal == "" {
-		err = errors.New("empty channal")
-	}
-
-	return
 }
 
 func parseEvent(p []byte) (ev, data []byte, err error) {
