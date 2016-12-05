@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"regexp"
 	"strings"
@@ -32,16 +34,34 @@ var (
 	// CRecover client 請求過往資料
 	CRecover byte = '>'
 
-	// OK 成功回應 bytes
-	OK = []byte{'O', 'K'}
-	// PONG ...
-	PONG = []byte{'P', 'O', 'N', 'G'}
 	// EOL 換行bytes
 	EOL = []byte{'\r', '\n'}
 )
 
 // Conn 包裝 net.Conn (TCP) 連線
-type Conn struct {
+type Conn interface {
+	SetName(string)
+	GetName() string
+	HasName() bool
+	SetLastAuth(*store.Auth)
+	GetLastAuth() *store.Auth
+	RemoteAddr() string
+	GetAuth() *store.Auth
+	EachChannels(fs ...func(string, *regexp.Regexp) string) map[string]*regexp.Regexp
+	ReadLine() ([]byte, error)
+	ReadLen([]byte) ([]byte, error)
+	Subscribe([]byte) (string, error)
+	Unsubscribe([]byte) (string, error)
+	IsListening(string) bool
+	Err() error
+	Close(error) error
+	SendError(error) error
+	SendReply(string) error
+	SendPong([]byte) error
+	SendEvent(e string) error
+}
+
+type conn struct {
 	*sync.RWMutex
 	conn net.Conn
 	w    *bufio.Writer
@@ -56,32 +76,52 @@ type Conn struct {
 	lenBox [32]byte
 }
 
-func newConn(conn net.Conn, t time.Time) *Conn {
-	return &Conn{
+func newConn(c net.Conn, t time.Time) Conn {
+	return &conn{
 		RWMutex:     &sync.RWMutex{},
-		conn:        conn,
-		w:           bufio.NewWriter(conn),
-		r:           bufio.NewReader(conn),
+		conn:        c,
+		w:           bufio.NewWriter(c),
+		r:           bufio.NewReader(c),
 		chs:         map[string]*regexp.Regexp{},
 		connectedAt: t.Unix(),
 	}
 }
 
 // SetLastAuth 注入上一次登入紀錄
-func (c *Conn) SetLastAuth(a *store.Auth) {
+func (c *conn) SetLastAuth(a *store.Auth) {
 	c.lastAuth = a
+}
+func (c *conn) GetLastAuth() *store.Auth {
+	return c.lastAuth
+}
+
+func (c *conn) SetName(name string) {
+	c.name = name
+}
+func (c *conn) GetName() string {
+	return c.name
+}
+func (c *conn) HasName() bool {
+	return c.name != ""
+}
+
+func (c *conn) RemoteAddr() string {
+	if c.conn == nil {
+		return ""
+	}
+	return c.conn.RemoteAddr().String()
 }
 
 // GetAuth 回傳當前連線的登入紀錄
-func (c *Conn) GetAuth() *store.Auth {
+func (c *conn) GetAuth() *store.Auth {
 	return &store.Auth{
 		Name:        c.name,
-		IP:          c.conn.RemoteAddr().String(),
+		IP:          c.RemoteAddr(),
 		ConnectedAt: c.connectedAt,
 	}
 }
 
-func (c *Conn) readLine() ([]byte, error) {
+func (c *conn) ReadLine() ([]byte, error) {
 	b, err := c.r.ReadSlice('\n')
 	if err != nil {
 		return nil, err
@@ -97,7 +137,22 @@ func (c *Conn) readLine() ([]byte, error) {
 	return b[:i], nil
 }
 
-func (c *Conn) subscribe(p []byte) (string, error) {
+func (c *conn) ReadLen(p []byte) ([]byte, error) {
+	n, err := parseLen(p)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, n)
+	_, err = io.ReadFull(c.r, buf)
+	if err != nil {
+		return nil, err
+	}
+	// 讀取最後的換行
+	c.ReadLine()
+	return buf, nil
+}
+
+func (c *conn) Subscribe(p []byte) (string, error) {
 
 	c.Lock()
 	defer c.Unlock()
@@ -123,7 +178,7 @@ func (c *Conn) subscribe(p []byte) (string, error) {
 	return ind, nil
 }
 
-func (c *Conn) unsubscribe(p []byte) error {
+func (c *conn) Unsubscribe(p []byte) (string, error) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -131,15 +186,15 @@ func (c *Conn) unsubscribe(p []byte) error {
 	ind := strings.TrimSpace(string(p))
 	// 判斷是否存在
 	if _, exists := c.chs[ind]; !exists {
-		return fmt.Errorf("channel(%s) not found", ind)
+		return "", fmt.Errorf("channel(%s) not found", ind)
 	}
 
 	delete(c.chs, ind)
 
-	return nil
+	return ind, nil
 }
 
-func (c *Conn) isListening(eventName string) bool {
+func (c *conn) IsListening(eventName string) bool {
 	c.RLock()
 	defer c.RUnlock()
 
@@ -154,7 +209,31 @@ func (c *Conn) isListening(eventName string) bool {
 	return false
 }
 
-func (c *Conn) close(err error) error {
+func (c *conn) EachChannels(fs ...func(string, *regexp.Regexp) string) map[string]*regexp.Regexp {
+	c.RLock()
+	defer c.RUnlock()
+
+	ret := map[string]*regexp.Regexp{}
+
+NEXT:
+	for ch, re := range c.chs {
+		for _, f := range fs {
+			ch = f(ch, re)
+			if ch == "" {
+				continue NEXT
+			}
+		}
+		ret[ch] = re
+	}
+
+	return ret
+}
+
+func (c *conn) Err() error {
+	return c.err
+}
+
+func (c *conn) Close(err error) error {
 	c.Lock()
 	defer c.Unlock()
 	if c.err == nil {
@@ -164,7 +243,16 @@ func (c *Conn) close(err error) error {
 	return err
 }
 
-func (c *Conn) writeLen(prefix byte, n int) error {
+func (c *conn) flush() error {
+	c.w.Write(EOL)
+	if err := c.w.Flush(); err != nil {
+		return c.Close(err)
+	}
+
+	return nil
+}
+
+func (c *conn) writeLen(prefix byte, n int) error {
 
 	i := len(c.lenBox) - 1
 	for {
@@ -182,35 +270,110 @@ func (c *Conn) writeLen(prefix byte, n int) error {
 	return err
 }
 
-func (c *Conn) writeError(e error) {
+func (c *conn) writeError(err error) error {
 	c.w.WriteByte(CError)
-	c.w.WriteString(e.Error())
-	c.flush()
+	_, err = c.w.WriteString(err.Error())
+	return err
 }
 
-func (c *Conn) writeOk() {
+func (c *conn) writeReply(m string) error {
 	c.w.WriteByte(CReply)
-	c.w.Write(OK)
-	c.flush()
+	_, err := c.w.WriteString(m)
+	return err
 }
 
-func (c *Conn) writePong(ping []byte) {
+func (c *conn) writePong(ping []byte) error {
 	c.writeLen(CPong, len(ping))
-	c.w.Write(ping)
-	c.flush()
+	_, err := c.w.Write(ping)
+	return err
 }
 
-func (c *Conn) writeEvent(e string) {
+func (c *conn) writeEvent(e string) error {
 	c.writeLen(CEvent, len(e))
-	c.w.WriteString(e)
-	c.flush()
+	_, err := c.w.WriteString(e)
+	return err
 }
 
-func (c *Conn) flush() error {
-	c.w.Write(EOL)
-	if err := c.w.Flush(); err != nil {
-		return c.close(err)
+func (c *conn) SendError(err error) error {
+	c.writeError(err)
+	return c.flush()
+}
+
+func (c *conn) SendReply(m string) error {
+	c.writeReply(m)
+	return c.flush()
+}
+
+func (c *conn) SendPong(ping []byte) error {
+	c.writePong(ping)
+	return c.flush()
+}
+
+func (c *conn) SendEvent(e string) error {
+	c.writeEvent(e)
+	return c.flush()
+}
+
+func parseLen(p []byte) (int64, error) {
+
+	raw := string(p)
+
+	if len(p) == 0 {
+		return -1, errors.New("length error:" + raw)
 	}
 
-	return nil
+	var negate bool
+	if p[0] == '-' {
+		negate = true
+		p = p[1:]
+		if len(p) == 0 {
+			return -1, errors.New("length error:" + raw)
+		}
+	}
+
+	var n int64
+	for _, b := range p {
+
+		if b == '\r' || b == '\n' {
+			break
+		}
+		n *= 10
+		if b < '0' || b > '9' {
+			return -1, errors.New("not number:" + string(b))
+		}
+
+		n += int64(b - '0')
+	}
+
+	if negate {
+		n = -n
+	}
+
+	return n, nil
+}
+
+func parseEvent(p []byte) (ev, data []byte, err error) {
+
+	var sp int
+	box := [30]byte{}
+
+	for i, b := range p {
+		if b == ':' {
+			sp = i
+			break
+		}
+		box[i] = b
+	}
+	ev = box[:sp]
+	data = p[sp+1:]
+
+	if len(ev) > 30 {
+		err = errors.New("event name over 30 char")
+	} else if len(ev) == 0 {
+		err = errors.New("event name is empty")
+	} else if len(data) == 0 {
+		err = errors.New("event data empty")
+	}
+
+	return
 }

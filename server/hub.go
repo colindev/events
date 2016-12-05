@@ -3,12 +3,11 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -19,11 +18,12 @@ import (
 
 // Hub 負責管理連線
 type Hub struct {
+	env *Env
 	*sync.RWMutex
 	// 需作歷程管理
-	m map[string]*Conn
+	m map[string]Conn
 	// 不須作歷程管理
-	g     map[*Conn]bool
+	g     map[Conn]bool
 	store *store.Store
 	*log.Logger
 }
@@ -42,16 +42,17 @@ func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 	}
 
 	return &Hub{
+		env:     env,
 		RWMutex: &sync.RWMutex{},
-		m:       map[string]*Conn{},
-		g:       map[*Conn]bool{},
+		m:       map[string]Conn{},
+		g:       map[Conn]bool{},
 		store:   sto,
 		Logger:  logger,
 	}, nil
 }
 
 // Auth 執行登入紀錄
-func (h *Hub) auth(c *Conn, p []byte) error {
+func (h *Hub) auth(c Conn, p []byte) error {
 
 	h.Lock()
 	defer h.Unlock()
@@ -68,7 +69,7 @@ func (h *Hub) auth(c *Conn, p []byte) error {
 		return fmt.Errorf("hub: duplicate auth name(%s)", name)
 	}
 
-	c.name = name
+	c.SetName(name)
 	h.m[name] = c
 	auth, err := h.store.GetLast(name)
 	if err != nil {
@@ -84,27 +85,28 @@ func (h *Hub) auth(c *Conn, p []byte) error {
 }
 
 // Quit 執行退出紀錄
-func (h *Hub) quit(conn *Conn, t time.Time) {
+func (h *Hub) quit(c Conn, t time.Time) {
+	var err error
 	h.Lock()
 	defer h.Unlock()
-	defer conn.conn.Close()
+	defer c.Close(err)
 
-	if conn.name == "" {
-		delete(h.g, conn)
+	if !c.HasName() {
+		delete(h.g, c)
 		return
 	}
 
-	delete(h.m, conn.name)
-	auth := conn.GetAuth()
+	delete(h.m, c.GetName())
+	auth := c.GetAuth()
 	auth.DisconnectedAt = t.Unix()
 	if err := h.store.UpdateAuth(auth); err != nil {
 		h.Println(err)
 	}
-	h.Printf("[hub] %s quit: %+v\n", conn.name, auth)
+	h.Printf("[hub] %s quit: %+v\n", c.GetName(), auth)
 }
 
 func (h *Hub) quitAll(t time.Time) {
-	m := map[*Conn]bool{}
+	m := map[Conn]bool{}
 	h.RLock()
 	for _, c := range h.m {
 		m[c] = true
@@ -124,64 +126,68 @@ func (h *Hub) publish(e *store.Event) int {
 	defer h.RUnlock()
 
 	var cnt int
-	for name, conn := range h.m {
-		if conn.isListening(e.Name) {
+	for name, c := range h.m {
+		if c.IsListening(e.Name) {
 			cnt++
 			h.Printf("write to %s: %s\n", name, e.Raw)
-			go conn.writeEvent(e.Raw)
+			go c.SendEvent(e.Raw)
 		}
 	}
 
-	for conn := range h.g {
-		if conn.isListening(e.Name) {
+	for c := range h.g {
+		if c.IsListening(e.Name) {
 			cnt++
 			h.Printf("write to ghost: %s\n", e.Raw)
-			go conn.writeEvent(e.Raw)
+			go c.SendEvent(e.Raw)
 		}
 	}
 
 	return cnt
 }
 
-func (h *Hub) recover(conn *Conn, since int64) error {
-	h.Printf("recover: %+v since %d\n", conn, since)
+func (h *Hub) recover(c Conn, since int64) error {
+	h.Printf("recover: %+v since %d\n", c, since)
 
 	if since == 0 {
-		since = conn.lastAuth.DisconnectedAt
 		// NOTE 沒上一次的登入紀錄時不重送全部訊息
-		if since == 0 {
+		lastAuth := c.GetLastAuth()
+		if lastAuth == nil {
 			return nil
 		}
+		if lastAuth.DisconnectedAt == 0 {
+			return nil
+		}
+		since = lastAuth.DisconnectedAt
 	}
 
 	prefix := []string{}
-	for ev := range conn.chs {
-		prefix = append(prefix, event.Event(ev).Type())
-	}
+	c.EachChannels(func(ch string, re *regexp.Regexp) string {
+		prefix = append(prefix, event.Event(ch).Type())
+		return ""
+	})
 
 	h.store.EachEvents(func(e *store.Event) {
-		if conn.isListening(e.Name) {
-			h.Printf("resend %s: %+v\n", conn.name, e)
-			conn.writeEvent(e.Raw)
+		if c.IsListening(e.Name) {
+			h.Printf("resend %s: %+v\n", c.GetName(), e)
+			c.SendEvent(e.Raw)
 		}
 	}, since, prefix)
 
 	return nil
 }
 
-func (h *Hub) handle(c *Conn) {
+func (h *Hub) handle(c Conn) {
 
 	defer func() {
-		c.flush()
 		h.quit(c, time.Now())
-		if c.err != nil {
-			h.Println("conn error:", c.err)
+		if err := c.Err(); err != nil {
+			h.Println("conn error:", err)
 		}
 	}()
 
 	for {
-		line, err := c.readLine()
-		log.Printf("<- client [%s]: %v = [%s] %v\n", c.conn.RemoteAddr().String(), line, line, err)
+		line, err := c.ReadLine()
+		log.Printf("<- client [%s]: %v = [%s] %v\n", c.RemoteAddr(), line, line, err)
 		if err != nil {
 			return
 		}
@@ -210,7 +216,7 @@ func (h *Hub) handle(c *Conn) {
 			// 失敗直接斷線
 			if err := h.auth(c, line[1:]); err != nil {
 				log.Println(err)
-				c.writeError(err)
+				c.SendError(err)
 				return
 			}
 
@@ -224,70 +230,45 @@ func (h *Hub) handle(c *Conn) {
 			}
 			if err != nil {
 				log.Println(err)
-				c.writeError(err)
+				c.SendError(err)
 				return
 			}
 			h.recover(c, n)
 
 		case CAddChan:
-			if channal, err := c.subscribe(line[1:]); err != nil {
-				log.Printf("%s subscribe failed %v\n", c.name, err)
-				c.writeError(err)
+			if channel, err := c.Subscribe(line[1:]); err != nil {
+				log.Printf("%s subscribe failed %v\n", c.GetName(), err)
+				c.SendError(err)
 			} else {
-				log.Printf("%s subscribe %s\n", c.name, channal)
-				c.writeOk()
+				log.Printf("%s subscribe %s\n", c.GetName(), channel)
+				c.SendReply("OK")
 			}
 
 		case CDelChan:
-			log.Printf("%s unsubscribe %s\n", c.name, line[1:])
-			if err := c.unsubscribe(line[1:]); err != nil {
-				log.Printf("%s unsubscribe failed %v\n", c.name, err)
-				c.writeError(err)
+			log.Printf("%s unsubscribe %s\n", c.GetName(), line[1:])
+			if channel, err := c.Unsubscribe(line[1:]); err != nil {
+				log.Printf("%s unsubscribe failed %v\n", c.GetName(), err)
+				c.SendError(err)
 			} else {
-				c.writeOk()
+				log.Printf("%s subscribe %s\n", c.GetName(), channel)
+				c.SendReply("OK")
 			}
 
 		case CPing:
-			n, err := parseLen(line[1:])
+			p, err := c.ReadLen(line[1:])
 			if err != nil {
 				log.Println(err)
-				c.writeError(err)
+				c.SendError(err)
 				return
 			}
 
-			log.Printf("ping length: %d\n", n)
-
-			p := make([]byte, n)
-			_, err = io.ReadFull(c.r, p)
-			log.Printf("read: %+v = [%s]\n", p, p)
-			// 去除換行
-			c.readLine()
-			if err != nil {
-				log.Println(err)
-				c.writeError(err)
-				return
-			}
-
-			c.writePong(p)
+			c.SendPong(p)
 
 		case CEvent:
-			n, err := parseLen(line[1:])
+			p, err := c.ReadLen(line[1:])
 			if err != nil {
 				log.Println(err)
-				c.writeError(err)
-				return
-			}
-
-			log.Printf("event length: %d\n", n)
-
-			p := make([]byte, n)
-			_, err = io.ReadFull(c.r, p)
-			log.Printf("read: %+v = [%s]\n", p, p)
-			// 去除換行
-			c.readLine()
-			if err != nil {
-				log.Println(err)
-				c.writeError(err)
+				c.SendError(err)
 				return
 			}
 
@@ -301,7 +282,7 @@ func (h *Hub) handle(c *Conn) {
 				}()
 				h.publish(storeEvent)
 			} else {
-				c.writeError(err)
+				c.SendError(err)
 			}
 		}
 	}
@@ -336,6 +317,7 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string) error {
 	s := <-quit
 	log.Printf("Receive os.Signal %s\n", s)
 	h.quitAll(time.Now())
+	log.Println("h.quitAll")
 	return listener.Close()
 
 }
@@ -359,68 +341,4 @@ func makeEvent(ev, data []byte, t time.Time) *store.Event {
 		Raw:        string(p),
 		ReceivedAt: t.Unix(),
 	}
-}
-
-func parseLen(p []byte) (int64, error) {
-
-	raw := string(p)
-
-	if len(p) == 0 {
-		return -1, errors.New("length error:" + raw)
-	}
-
-	var negate bool
-	if p[0] == '-' {
-		negate = true
-		p = p[1:]
-		if len(p) == 0 {
-			return -1, errors.New("length error:" + raw)
-		}
-	}
-
-	var n int64
-	for _, b := range p {
-
-		if b == '\r' || b == '\n' {
-			break
-		}
-		n *= 10
-		if b < '0' || b > '9' {
-			return -1, errors.New("not number:" + string(b))
-		}
-
-		n += int64(b - '0')
-	}
-
-	if negate {
-		n = -n
-	}
-
-	return n, nil
-}
-
-func parseEvent(p []byte) (ev, data []byte, err error) {
-
-	var sp int
-	box := [30]byte{}
-
-	for i, b := range p {
-		if b == ':' {
-			sp = i
-			break
-		}
-		box[i] = b
-	}
-	ev = box[:sp]
-	data = p[sp+1:]
-
-	if len(ev) > 30 {
-		err = errors.New("event name over 30 char")
-	} else if len(ev) == 0 {
-		err = errors.New("event name is empty")
-	} else if len(data) == 0 {
-		err = errors.New("event data empty")
-	}
-
-	return
 }
