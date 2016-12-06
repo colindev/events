@@ -62,7 +62,7 @@ type Conn interface {
 }
 
 type conn struct {
-	*sync.RWMutex
+	sync.RWMutex
 	conn net.Conn
 	w    *bufio.Writer
 	r    *bufio.Reader
@@ -78,7 +78,6 @@ type conn struct {
 
 func newConn(c net.Conn, t time.Time) Conn {
 	return &conn{
-		RWMutex:     &sync.RWMutex{},
 		conn:        c,
 		w:           bufio.NewWriter(c),
 		r:           bufio.NewReader(c),
