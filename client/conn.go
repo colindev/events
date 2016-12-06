@@ -188,8 +188,8 @@ func (c *conn) writeLen(prefix byte, n int) error {
 
 func (c *conn) writeEvent(p []byte) error {
 	c.writeLen(CEvent, len(p))
-	c.w.Write(p)
-	return c.flush()
+	_, err := c.w.Write(p)
+	return err
 }
 
 func (c *conn) Auth() error {
@@ -236,7 +236,8 @@ func (c *conn) Fire(ev event.Event, rd event.RawData) error {
 	buf.WriteByte(':')
 	buf.Write(rd.Bytes())
 
-	return c.writeEvent(buf.Bytes())
+	c.writeEvent(buf.Bytes())
+	return c.flush()
 }
 
 func (c *conn) Ping(m string) error {

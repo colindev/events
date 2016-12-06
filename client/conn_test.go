@@ -236,7 +236,34 @@ func TestConn_writeLen(t *testing.T) {
 
 	buf, bw, c := createBWC()
 
-	c.writeLen('@', 12345)
+	prefix := byte('@')
+	length := 12345
+	expect := fmt.Sprintf("%c%d\r\n", prefix, length)
 
-	checkBuf("writeLen", t, buf, bw, "@12345\r\n")
+	c.writeLen(prefix, length)
+
+	checkBuf("writeLen", t, buf, bw, expect)
+}
+
+func TestConn_writeEvent(t *testing.T) {
+	buf, bw, c := createBWC()
+
+	eventText := "aaa.bbb:ccc"
+	expect := fmt.Sprintf("=%d\r\n%s", len(eventText), eventText)
+
+	c.writeEvent([]byte(eventText))
+
+	checkBuf("writeEvent", t, buf, bw, expect)
+}
+
+func TestConn_Auth(t *testing.T) {
+	buf, bw, c := createBWC()
+
+	authText := "test name"
+	expect := fmt.Sprintf("$%s\r\n", authText)
+
+	c.name = authText
+	c.Auth()
+
+	checkBuf("Auth", t, buf, bw, expect)
 }
