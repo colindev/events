@@ -148,6 +148,16 @@ func TestConn_writeLen(t *testing.T) {
 	}
 }
 
+func checkBuffer(name string, t *testing.T, w *bytes.Buffer, bw *bufio.Writer, expect string) {
+
+	if err := bw.Flush(); err != nil {
+		t.Errorf("%s buf flush error: %v", name, err)
+	}
+	if w.String() != expect {
+		t.Errorf("%s error: expect[%s], but[%s]", name, expect, w.String())
+	}
+}
+
 func TestConn_writeEvent(t *testing.T) {
 	eventText := `aaa.bbb.ccc:{"prop1":123, "prop2": "xxx"}`
 	expect := fmt.Sprintf(`=%d%s%s`, len(eventText), "\r\n", eventText)
@@ -157,13 +167,7 @@ func TestConn_writeEvent(t *testing.T) {
 	c := &conn{w: bw}
 
 	c.writeEvent(eventText)
-	if err := bw.Flush(); err != nil {
-		t.Error("buf flush error: ", err)
-	}
-
-	if w.String() != expect {
-		t.Errorf("writeEvent error: expect[%s], but[%s]", expect, w.String())
-	}
+	checkBuffer("writeEvent", t, w, bw, expect)
 }
 
 func TestConn_writePong(t *testing.T) {
@@ -176,11 +180,18 @@ func TestConn_writePong(t *testing.T) {
 	c := &conn{w: bw}
 
 	c.writeEvent(pingText)
-	if err := bw.Flush(); err != nil {
-		t.Error("buf flush error: ", err)
-	}
+	checkBuffer("writePong", t, w, bw, expect)
+}
 
-	if w.String() != expect {
-		t.Errorf("writePong error: expect[%s], but[%s]", expect, w.String())
-	}
+func TestConn_writeReply(t *testing.T) {
+	replyText := `abc Ok`
+	expect := fmt.Sprintf(`*%s`, replyText)
+
+	w := bytes.NewBuffer(nil)
+	bw := bufio.NewWriter(w)
+	c := &conn{w: bw}
+
+	c.writeReply(replyText)
+	checkBuffer("writeReply", t, w, bw, expect)
+
 }
