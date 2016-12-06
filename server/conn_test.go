@@ -132,3 +132,19 @@ func TestConnSubAndUnsub(t *testing.T) {
 	}
 
 }
+
+func TestConn_writeLen(t *testing.T) {
+	w := bytes.NewBuffer(nil)
+	bw := bufio.NewWriter(w)
+
+	c := &conn{w: bw}
+
+	c.writeLen('=', 12345)
+	if err := bw.Flush(); err != nil {
+		t.Error("buf flush error: ", err)
+	}
+
+	if w.String() != "=12345\r\n" {
+		t.Error("writeLen error:", w.String())
+	}
+}
