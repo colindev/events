@@ -270,15 +270,15 @@ func (c *conn) writeLen(prefix byte, n int) error {
 	return err
 }
 
-func (c *conn) writeError(err error) error {
-	c.w.WriteByte(CError)
-	_, err = c.w.WriteString(err.Error())
-	return err
-}
-
 func (c *conn) writeReply(m string) error {
 	c.w.WriteByte(CReply)
 	_, err := c.w.WriteString(m)
+	return err
+}
+
+func (c *conn) writeError(err error) error {
+	c.writeLen(CError, len(err.Error()))
+	_, err = c.w.WriteString(err.Error())
 	return err
 }
 

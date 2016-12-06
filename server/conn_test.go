@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -148,6 +149,11 @@ func TestConn_writeLen(t *testing.T) {
 	}
 }
 
+func createWBWC() (*bytes.Buffer, *bufio.Writer, *conn) {
+	w := bytes.NewBuffer(nil)
+	bw := bufio.NewWriter(w)
+	return w, bw, &conn{w: bw}
+}
 func checkBuffer(name string, t *testing.T, w *bytes.Buffer, bw *bufio.Writer, expect string) {
 
 	if err := bw.Flush(); err != nil {
@@ -162,10 +168,7 @@ func TestConn_writeEvent(t *testing.T) {
 	eventText := `aaa.bbb.ccc:{"prop1":123, "prop2": "xxx"}`
 	expect := fmt.Sprintf(`=%d%s%s`, len(eventText), "\r\n", eventText)
 
-	w := bytes.NewBuffer(nil)
-	bw := bufio.NewWriter(w)
-	c := &conn{w: bw}
-
+	w, bw, c := createWBWC()
 	c.writeEvent(eventText)
 	checkBuffer("writeEvent", t, w, bw, expect)
 }
@@ -175,10 +178,7 @@ func TestConn_writePong(t *testing.T) {
 555 666`
 	expect := fmt.Sprintf(`=%d%s%s`, len(pingText), "\r\n", pingText)
 
-	w := bytes.NewBuffer(nil)
-	bw := bufio.NewWriter(w)
-	c := &conn{w: bw}
-
+	w, bw, c := createWBWC()
 	c.writeEvent(pingText)
 	checkBuffer("writePong", t, w, bw, expect)
 }
@@ -187,11 +187,17 @@ func TestConn_writeReply(t *testing.T) {
 	replyText := `abc Ok`
 	expect := fmt.Sprintf(`*%s`, replyText)
 
-	w := bytes.NewBuffer(nil)
-	bw := bufio.NewWriter(w)
-	c := &conn{w: bw}
-
+	w, bw, c := createWBWC()
 	c.writeReply(replyText)
 	checkBuffer("writeReply", t, w, bw, expect)
 
+}
+
+func TestConn_writeError(t *testing.T) {
+	err := errors.New("test error\r\n\t123\r\n\t456")
+	expect := fmt.Sprintf(`!%d%s%s`, len(err.Error()), "\r\n", err.Error())
+
+	w, bw, c := createWBWC()
+	c.writeError(err)
+	checkBuffer("writeError", t, w, bw, expect)
 }

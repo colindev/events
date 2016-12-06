@@ -23,6 +23,7 @@ var (
 	CEvent   byte = '='
 	CPing    byte = '@'
 	CPong    byte = '@'
+	CErr     byte = '!'
 
 	EOL = []byte{'\r', '\n'}
 )
@@ -102,6 +103,22 @@ func (c *conn) readLine() ([]byte, error) {
 	return b[:i], nil
 }
 
+func (c *conn) readLen(p []byte) ([]byte, error) {
+	n, err := parseLen(p)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, n)
+	_, err = io.ReadFull(c.r, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	// 取出後面換行
+	c.readLine()
+	return buf, nil
+}
+
 func (c *conn) Receive() (ret interface{}, err error) {
 
 	line, err := c.readLine()
@@ -117,19 +134,16 @@ func (c *conn) Receive() (ret interface{}, err error) {
 	case CReply:
 		ret = &Reply{strings.TrimSpace(string(line[1:]))}
 
-	case CPong:
-		n, e := parseLen(line[1:])
+	case CErr:
+		p, e := c.readLen(line[1:])
 		if e != nil {
 			err = e
 			return
 		}
-		//log.Printf("length: %d\n", n)
+		return nil, errors.New(string(p))
 
-		p := make([]byte, n)
-		_, e = io.ReadFull(c.r, p)
-		//log.Printf("read: %+v = [%s]\n", p, p)
-		// 去除換行
-		c.readLine()
+	case CPong:
+		p, e := c.readLen(line[1:])
 		if e != nil {
 			err = e
 			return
@@ -141,18 +155,7 @@ func (c *conn) Receive() (ret interface{}, err error) {
 		}
 
 	case CEvent:
-		n, e := parseLen(line[1:])
-		if e != nil {
-			err = e
-			return
-		}
-		//log.Printf("length: %d\n", n)
-
-		p := make([]byte, n)
-		_, e = io.ReadFull(c.r, p)
-		//log.Printf("read: %+v = [%s]\n", p, p)
-		// 去除換行
-		c.readLine()
+		p, e := c.readLen(line[1:])
 		if e != nil {
 			err = e
 			return

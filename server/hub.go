@@ -185,7 +185,7 @@ func (h *Hub) handle(c Conn) {
 
 	for {
 		line, err := c.ReadLine()
-		log.Printf("<- client [%s]: %v = [%s] %v\n", c.RemoteAddr(), line, line, err)
+		h.Printf("<- client [%s]: %v = [%s] %v\n", c.RemoteAddr(), line, line, err)
 		if err != nil {
 			return
 		}
@@ -195,25 +195,11 @@ func (h *Hub) handle(c Conn) {
 			continue
 		}
 
-		/*
-			[server]
-			$xxx // 登入名稱
-			=n = len(event:{...}) // 事件長度(int)
-			event:{...} // 事件本體
-			+channal // 註冊頻道
-			-channal // 移除頻道
-
-			[client]
-			!xxx // 錯誤訊息
-			=n // 事件長度(int)
-			event:{...} // 事件本體
-			*OK // 請求處理完成
-		*/
 		switch line[0] {
 		case CAuth:
 			// 失敗直接斷線
 			if err := h.auth(c, line[1:]); err != nil {
-				log.Println(err)
+				h.Println(err)
 				c.SendError(err)
 				return
 			}
@@ -227,7 +213,7 @@ func (h *Hub) handle(c Conn) {
 				n, err = parseLen(line[1:])
 			}
 			if err != nil {
-				log.Println(err)
+				h.Println(err)
 				c.SendError(err)
 				return
 			}
@@ -235,27 +221,26 @@ func (h *Hub) handle(c Conn) {
 
 		case CAddChan:
 			if channel, err := c.Subscribe(line[1:]); err != nil {
-				log.Printf("%s subscribe failed %v\n", c.GetName(), err)
+				h.Printf("app(%s) subscribe failed %v\n", c.GetName(), err)
 				c.SendError(err)
 			} else {
-				log.Printf("%s subscribe %s\n", c.GetName(), channel)
+				h.Printf("app(%s) subscribe [%s]\n", c.GetName(), channel)
 				c.SendReply("OK")
 			}
 
 		case CDelChan:
-			log.Printf("%s unsubscribe %s\n", c.GetName(), line[1:])
 			if channel, err := c.Unsubscribe(line[1:]); err != nil {
-				log.Printf("%s unsubscribe failed %v\n", c.GetName(), err)
+				h.Printf("app(%s) unsubscribe failed %v\n", c.GetName(), err)
 				c.SendError(err)
 			} else {
-				log.Printf("%s subscribe %s\n", c.GetName(), channel)
+				h.Printf("app(%s) unsubscribe [%s]\n", c.GetName(), channel)
 				c.SendReply("OK")
 			}
 
 		case CPing:
 			p, err := c.ReadLen(line[1:])
 			if err != nil {
-				log.Println(err)
+				h.Println(err)
 				c.SendError(err)
 				return
 			}
@@ -265,13 +250,13 @@ func (h *Hub) handle(c Conn) {
 		case CEvent:
 			p, err := c.ReadLen(line[1:])
 			if err != nil {
-				log.Println(err)
+				h.Println(err)
 				c.SendError(err)
 				return
 			}
 
 			eventName, eventData, err := parseEvent(p)
-			log.Println("receive:", string(eventName), string(eventData), err)
+			h.Println("receive:", string(eventName), string(eventData), err)
 			if err == nil {
 				storeEvent := makeEvent(eventName, eventData, time.Now())
 				go func() {
@@ -282,6 +267,8 @@ func (h *Hub) handle(c Conn) {
 			} else {
 				c.SendError(err)
 			}
+		default:
+			h.Println("droped")
 		}
 	}
 }
@@ -305,7 +292,7 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string) error {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				log.Println("conn: ", err)
+				h.Println("conn: ", err)
 				return
 			}
 			go h.handle(newConn(conn, time.Now()))
@@ -313,9 +300,9 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string) error {
 	}()
 
 	s := <-quit
-	log.Printf("Receive os.Signal %s\n", s)
+	h.Printf("Receive os.Signal %s\n", s)
 	h.quitAll(time.Now())
-	log.Println("h.quitAll")
+	h.Println("h.quitAll")
 	return listener.Close()
 
 }
