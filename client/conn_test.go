@@ -15,6 +15,13 @@ func createBufReader(s string) *bufio.Reader {
 	return bufio.NewReader(strings.NewReader(s))
 }
 
+func createBufWriter() (*bytes.Buffer, *bufio.Writer) {
+	w := bytes.NewBuffer(nil)
+	bw := bufio.NewWriter(w)
+
+	return w, bw
+}
+
 func createConn(s string) *conn {
 	return &conn{r: createBufReader(s)}
 }
@@ -51,6 +58,27 @@ func TestConn_readLine(t *testing.T) {
 	if string(line) != "456" {
 		t.Errorf("expect 456, but [%s]", line)
 	}
+}
+
+func TestConn_readLen(t *testing.T) {
+
+	c := &conn{}
+
+	temp := "1234567890"
+	tempStream := fmt.Sprintf("%sx\r\n", temp)
+
+	c.r = createBufReader(tempStream)
+
+	p, err := c.readLen([]byte{'1', '0'})
+	if err != nil {
+		t.Error("readLen error: ", err)
+		t.Skip("skip check contents")
+	}
+
+	if string(p) != temp {
+		t.Errorf("readLen error, expect [%s], but [%s]", temp, p)
+	}
+
 }
 
 func TestConn_ReceiveReply(t *testing.T) {
