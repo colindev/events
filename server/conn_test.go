@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"io"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
@@ -44,5 +49,30 @@ func TestConn_IsListening(t *testing.T) {
 
 	if !c.IsListening("game.start") {
 		t.Error("match test fail:", c.EachChannels())
+	}
+}
+
+func TestConn_ReadLine(t *testing.T) {
+
+	var (
+		r  io.Reader
+		br *bufio.Reader
+		c  Conn
+	)
+
+	temp := []byte{'A', 'B', 'C'}
+	r = strings.NewReader(fmt.Sprintf("%s\r\n%s\n", temp, temp))
+	br = bufio.NewReader(r)
+
+	for i := 2; i > 0; i-- {
+		c = &conn{r: br}
+		line, err := c.ReadLine()
+		if err != nil {
+			t.Error(err)
+		}
+		t.Logf("readed %s", line)
+		if !bytes.Equal(temp, line) {
+			t.Errorf("read fail: [%b] != [%b]", temp, line)
+		}
 	}
 }

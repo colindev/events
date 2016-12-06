@@ -120,6 +120,7 @@ func (c *conn) GetAuth() *store.Auth {
 	}
 }
 
+// ReadLine 回傳去除結尾換行符號後的bytes
 func (c *conn) ReadLine() ([]byte, error) {
 	b, err := c.r.ReadSlice('\n')
 	if err != nil {
