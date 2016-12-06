@@ -248,8 +248,9 @@ func TestConn_writeLen(t *testing.T) {
 func TestConn_writeEvent(t *testing.T) {
 	buf, bw, c := createBWC()
 
+	prefix := CEvent
 	eventText := "aaa.bbb:ccc"
-	expect := fmt.Sprintf("=%d\r\n%s", len(eventText), eventText)
+	expect := fmt.Sprintf("%c%d\r\n%s", prefix, len(eventText), eventText)
 
 	c.writeEvent([]byte(eventText))
 
@@ -259,8 +260,9 @@ func TestConn_writeEvent(t *testing.T) {
 func TestConn_Auth(t *testing.T) {
 	buf, bw, c := createBWC()
 
+	prefix := CAuth
 	authText := "test name"
-	expect := fmt.Sprintf("$%s\r\n", authText)
+	expect := fmt.Sprintf("%c%s\r\n", prefix, authText)
 
 	c.name = authText
 	c.Auth()
@@ -289,4 +291,28 @@ func TestConn_RecoverSince(t *testing.T) {
 	c.RecoverSince(since)
 
 	checkBuf("RecoverSince", t, buf, bw, expect)
+}
+
+func TestConn_Subscribe(t *testing.T) {
+	buf, bw, c := createBWC()
+
+	prefix := CAddChan
+	chanName := "xyz"
+	expect := fmt.Sprintf("%c%s\r\n", prefix, chanName)
+
+	c.Subscribe(chanName)
+
+	checkBuf("Subscribe", t, buf, bw, expect)
+}
+
+func TestConn_Unsubscribe(t *testing.T) {
+	buf, bw, c := createBWC()
+
+	prefix := CDelChan
+	chanName := "xyz"
+	expect := fmt.Sprintf("%c%s\r\n", prefix, chanName)
+
+	c.Unsubscribe(chanName)
+
+	checkBuf("Unsubscribe", t, buf, bw, expect)
 }
