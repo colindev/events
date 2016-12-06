@@ -76,3 +76,59 @@ func TestConn_ReadLine(t *testing.T) {
 		}
 	}
 }
+
+func TestConnSubAndUnsub(t *testing.T) {
+	c := newConn(nil, time.Now())
+
+	temp := "aaa.*"
+	tempSpace := fmt.Sprintf(" %s ", temp)
+
+	ind, err := c.Subscribe([]byte(tempSpace))
+	if err != nil {
+		t.Error("subscribe error: ", err)
+	}
+	if ind != temp {
+		t.Error("trim space fail: ", ind)
+	}
+	ind, err = c.Subscribe([]byte(temp))
+	if err != nil {
+		t.Error("duplicate sub error")
+	}
+	if ind != temp {
+		t.Error("duplicate trim error:", ind)
+	}
+
+	if len(c.EachChannels()) != 1 {
+		t.Error("sub fail")
+		t.Skip("註冊錯誤後面不用測了")
+	}
+
+	// start test unsub
+	otherChs := []string{"aa.*", "aaaa.*", "aaa.bbb"}
+	for _, ch := range otherChs {
+		c.Subscribe([]byte(ch))
+	}
+
+	ind, err = c.Unsubscribe([]byte(tempSpace))
+	if err != nil {
+		t.Error("unsubscribe error: ", err)
+	}
+	if ind != temp {
+		t.Error("trim space fail: ", ind)
+	}
+	ind, err = c.Unsubscribe([]byte(temp))
+	if err == nil {
+		t.Error("duplicate unsub error")
+	}
+	if ind != "" {
+		t.Error("duplicate unsub drop ret fail: ", ind)
+	}
+
+	curChs := c.EachChannels()
+	for _, ch := range otherChs {
+		if _, exists := curChs[ch]; !exists {
+			t.Error("miss channel: ", ch)
+		}
+	}
+
+}
