@@ -38,7 +38,7 @@ func (m *fake) Unsubscribe(...string) error {
 	return nil
 }
 
-func Test(t *testing.T) {
+func TestPool(t *testing.T) {
 
 	p := NewPool(func() (Conn, error) {
 		return &fake{}, nil
