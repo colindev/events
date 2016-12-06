@@ -11,8 +11,46 @@ import (
 	"github.com/colindev/events/event"
 )
 
+func createBufReader(s string) *bufio.Reader {
+	return bufio.NewReader(strings.NewReader(s))
+}
+
 func createConn(s string) *conn {
-	return &conn{r: bufio.NewReader(strings.NewReader(s))}
+	return &conn{r: createBufReader(s)}
+}
+
+func TestConn_readLine(t *testing.T) {
+	var (
+		c    *conn
+		err  error
+		line []byte
+	)
+
+	c = createConn("")
+	_, err = c.readLine()
+	if err != io.EOF {
+		t.Error("EOL")
+	}
+
+	c.r = createBufReader("\n")
+	_, err = c.readLine()
+	if err == nil {
+		t.Error("miss \\r")
+	}
+
+	c.r = createBufReader("\r\n")
+	line, err = c.readLine()
+	if !bytes.Equal(line, []byte{}) {
+		t.Errorf("expect empty line, but %+v", line)
+	}
+
+	c.r = createBufReader("123\r\n456\r\n")
+
+	c.readLine()
+	line, _ = c.readLine()
+	if string(line) != "456" {
+		t.Errorf("expect 456, but [%s]", line)
+	}
 }
 
 func TestConn_ReceiveReply(t *testing.T) {
