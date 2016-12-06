@@ -316,3 +316,27 @@ func TestConn_Unsubscribe(t *testing.T) {
 
 	checkBuf("Unsubscribe", t, buf, bw, expect)
 }
+
+func TestConn_Fire(t *testing.T) {
+	buf, bw, c := createBWC()
+
+	prefix := CEvent
+	eventText := fmt.Sprintf("%s:%s", eventName, eventData)
+	expect := fmt.Sprintf("%c%d\r\n%s\r\n", prefix, len(eventText), eventText)
+
+	c.Fire(eventName, eventData)
+
+	checkBuf("Fire", t, buf, bw, expect)
+}
+
+func TestConn_Ping(t *testing.T) {
+	buf, bw, c := createBWC()
+
+	prefix := CPing
+	pingText := "123\n456\r\n789\r\n"
+	expect := fmt.Sprintf("%c%d\r\n%s\r\n", prefix, len(pingText), pingText)
+
+	c.Ping(pingText)
+
+	checkBuf("Ping", t, buf, bw, expect)
+}
