@@ -206,7 +206,7 @@ func (c *conn) Recover() error {
 
 func (c *conn) RecoverSince(i int64) error {
 	c.w.WriteByte(CRecover)
-	c.w.WriteString(strconv.FormatInt(1, 10))
+	c.w.WriteString(strconv.FormatInt(i, 10))
 	return c.flush()
 }
 

@@ -267,3 +267,26 @@ func TestConn_Auth(t *testing.T) {
 
 	checkBuf("Auth", t, buf, bw, expect)
 }
+
+func TestConn_Recover(t *testing.T) {
+	buf, bw, c := createBWC()
+
+	prefix := CRecover
+	expect := fmt.Sprintf("%c\r\n", prefix)
+
+	c.Recover()
+
+	checkBuf("Recover", t, buf, bw, expect)
+}
+
+func TestConn_RecoverSince(t *testing.T) {
+	buf, bw, c := createBWC()
+
+	prefix := CRecover
+	since := int64(12345600)
+	expect := fmt.Sprintf("%c%d\r\n", prefix, since)
+
+	c.RecoverSince(since)
+
+	checkBuf("RecoverSince", t, buf, bw, expect)
+}
