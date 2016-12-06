@@ -3,39 +3,116 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/colindev/events/event"
 )
 
-func TestConnReceive(t *testing.T) {
+func createConn(s string) *conn {
+	return &conn{r: bufio.NewReader(strings.NewReader(s))}
+}
 
-	buf := bytes.NewBuffer([]byte{})
-	c := &conn{
-		w: bufio.NewWriter(buf),
-		r: bufio.NewReader(buf),
-	}
-	c.Fire(eventName, eventData)
-	e, err := c.Receive()
+func TestConn_ReceiveReply(t *testing.T) {
+
+	replyText := "ok 123!*$"
+	replyStream := fmt.Sprintf(`* %s %s`, replyText, "\r\n")
+
+	c := createConn(replyStream)
+
+	ret, err := c.Receive()
 
 	if err != nil {
 		t.Error(err)
 		t.Skip("skip check data detail")
 	}
 
-	if e, ok := e.(*Event); ok {
-		if string(e.Name) != string(eventName) {
-			t.Error("event name error:", string(e.Name))
+	if ret, ok := ret.(*Reply); ok {
+		if s := ret.String(); s != replyText {
+			t.Errorf("reply expect [%s], but [%s]", replyText, s)
+		}
+	} else {
+		t.Error("receive type error")
+	}
+}
+
+func TestConn_ReceiveErr(t *testing.T) {
+
+	errText := "some thing error\r\n\t123\r\n\t456"
+	errStream := fmt.Sprintf(`!%d%s%s%s`, len(errText), "\r\n", errText, "\r\n")
+
+	c := createConn(errStream)
+
+	ret, err := c.Receive()
+
+	if ret != nil {
+		t.Error("conn receive error can't with ret:", ret)
+	}
+
+	if err == nil {
+		t.Error("conn receive error, but return nil")
+		t.Skip("skip check data detail")
+	}
+
+	if err.Error() != errText {
+		t.Errorf("receive error expect [%s], but [%s]", errText, err.Error())
+	}
+}
+
+func TestConn_ReceivePong(t *testing.T) {
+
+	pongText := "123\r\n456\r\n789"
+	pongStream := fmt.Sprintf(`@%d%s%s%s`, len(pongText), "\r\n", pongText, "\r\n")
+
+	c := createConn(pongStream)
+
+	ret, err := c.Receive()
+	if err != nil {
+		t.Error(err)
+		t.Skip("skip check data detail")
+	}
+
+	if ret, ok := ret.(*Event); ok {
+		if ret.Name != event.PONG {
+			t.Errorf("expect event name [%s], but [%s]", event.PONG, ret.Name)
 		}
 
-		if !bytes.Equal(e.Data, eventData.Bytes()) {
-			t.Error("event data error:\n", string(e.Data))
+		if ret.Data.String() != pongText {
+			t.Errorf("expect event data [%s], but [%s]", pongText, ret.Data)
 		}
 	} else {
 		t.Error("receive type error")
 	}
 
+}
+
+func TestConn_ReceiveEvent(t *testing.T) {
+
+	eventText := fmt.Sprintf(`%s:%s`, eventName, eventData)
+	eventStream := fmt.Sprintf(`=%d%s%s%s`, len(eventText), "\r\n", eventText, "\r\n")
+
+	c := createConn(eventStream)
+
+	ret, err := c.Receive()
+
+	if err != nil {
+		t.Error(err)
+		t.Skip("skip check data detail")
+	}
+
+	if ret, ok := ret.(*Event); ok {
+		if string(ret.Name) != string(eventName) {
+			t.Error("event name error:", string(ret.Name))
+		}
+
+		if !bytes.Equal(ret.Data, eventData.Bytes()) {
+			t.Error("event data error:\n", string(ret.Data))
+		}
+	} else {
+		t.Error("receive type error")
+	}
 }
 
 func TestParseLen(t *testing.T) {
