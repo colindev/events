@@ -136,7 +136,6 @@ func TestConnSubAndUnsub(t *testing.T) {
 func TestConn_writeLen(t *testing.T) {
 	w := bytes.NewBuffer(nil)
 	bw := bufio.NewWriter(w)
-
 	c := &conn{w: bw}
 
 	c.writeLen('=', 12345)
@@ -146,5 +145,23 @@ func TestConn_writeLen(t *testing.T) {
 
 	if w.String() != "=12345\r\n" {
 		t.Error("writeLen error:", w.String())
+	}
+}
+
+func TestConn_writeEvent(t *testing.T) {
+	event1 := `aaa.bbb.ccc:{"prop1":123, "prop2": "xxx"}`
+	expect1 := fmt.Sprintf(`=%d%s%s`, len(event1), "\r\n", event1)
+
+	w := bytes.NewBuffer(nil)
+	bw := bufio.NewWriter(w)
+	c := &conn{w: bw}
+
+	c.writeEvent(event1)
+	if err := bw.Flush(); err != nil {
+		t.Error("buf flush error: ", err)
+	}
+
+	if w.String() != expect1 {
+		t.Errorf("writeEvent error: expect[%s], but[%s]", expect1, w.String())
 	}
 }
