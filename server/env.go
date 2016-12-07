@@ -4,6 +4,7 @@ import "fmt"
 
 // Env 環境參數
 type Env struct {
+	version     string `env:"-"`
 	path        string `env:"-"`
 	Debug       bool   `env:"DEBUG"`
 	RedisServer string `env:"REDIS_SERVER"`
@@ -14,7 +15,7 @@ type Env struct {
 }
 
 func (env *Env) String() string {
-	return fmt.Sprintf(`
+	return fmt.Sprintf(`events-driver %s
 	path=%s
 	DEBUG=%t
 	AUTH_DSN=%s
@@ -22,6 +23,7 @@ func (env *Env) String() string {
 	ADDR=%s
 	GC_DURATION=%s
 	`,
+		env.version,
 		env.path,
 		env.Debug,
 		env.AuthDSN,

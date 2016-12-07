@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -12,15 +13,24 @@ import (
 )
 
 var (
+	version  string
 	env      = &Env{}
 	logFlags = log.LstdFlags | log.Lshortfile
 )
 
 func init() {
 
+	showVer := flag.Bool("v", false, "version")
 	flag.StringVar(&env.path, "env", ".env", "environment file")
 	flag.Parse()
 
+	if *showVer {
+		fmt.Println("events-driver: ", version)
+		os.Exit(0)
+	}
+
+	env.version = version
+	log.SetPrefix("[" + version + "]")
 	log.SetFlags(logFlags)
 }
 

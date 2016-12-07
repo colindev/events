@@ -27,16 +27,29 @@ func (chs *channels) Set(ev string) error {
 	return nil
 }
 
+var version string
+
+func init() {
+	log.SetPrefix("[" + version + "]")
+}
+
 func main() {
 
 	var (
-		flow string
-		chs  = channels{}
+		flow    string
+		chs     = channels{}
+		showVer bool
 	)
 
+	flag.BoolVar(&showVer, "v", false, "version")
 	flag.StringVar(&flow, "flow", "redis://127.0.0.1:6379|events://127.0.0.1:6300", "event flow")
 	flag.Var(&chs, "event", "subscribe events")
 	flag.Parse()
+
+	if showVer {
+		fmt.Println("redis-proxy: ", version)
+		os.Exit(0)
+	}
 
 	s := strings.SplitN(flow, "|", 2)
 	if len(s) != 2 {

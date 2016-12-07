@@ -24,6 +24,12 @@ func (chs *channels) Set(ev string) error {
 	return nil
 }
 
+var version string
+
+func init() {
+	log.SetPrefix("[" + version + "]")
+}
+
 func main() {
 
 	var (
@@ -34,16 +40,23 @@ func main() {
 		listenEvents  = channels{}
 		launcherEvent string
 		recoverSince  int64
+		showVer       bool
 
 		cli = flag.CommandLine
 	)
 
+	cli.BoolVar(&showVer, "v", false, "version")
 	cli.StringVar(&appName, "app", "", "app name")
 	cli.StringVar(&listenAddr, "listen", "127.0.0.1:6300", "listen event address")
 	cli.StringVar(&launcherEvent, "fire", "", "fire event {name}:{data}")
 	cli.Var(&listenEvents, "event", "listen events")
 	cli.Int64Var(&recoverSince, "r", 0, "request recover since")
 	cli.Parse(os.Args[1:])
+
+	if showVer {
+		fmt.Println("events-cli: ", version)
+		os.Exit(0)
+	}
 
 	dial := func() (client.Conn, error) {
 		return client.Dial(appName, listenAddr)
