@@ -11,7 +11,7 @@ import (
 
 func main() {
 
-	addr := flag.String("addr", ":8000", "server address")
+	addr := flag.String("addr", ":6300", "server address")
 	c := flag.Int("c", 500, "num of client")
 
 	flag.Parse()
