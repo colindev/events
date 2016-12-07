@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/server/store"
 )
@@ -196,7 +197,7 @@ func (h *Hub) handle(c Conn) {
 		}
 
 		switch line[0] {
-		case CAuth:
+		case client.CAuth:
 			// 失敗直接斷線
 			if err := h.auth(c, line[1:]); err != nil {
 				h.Println(err)
@@ -204,7 +205,7 @@ func (h *Hub) handle(c Conn) {
 				return
 			}
 
-		case CRecover:
+		case client.CRecover:
 			var (
 				n   int64
 				err error
@@ -219,7 +220,7 @@ func (h *Hub) handle(c Conn) {
 			}
 			h.recover(c, n)
 
-		case CAddChan:
+		case client.CAddChan:
 			if channel, err := c.Subscribe(line[1:]); err != nil {
 				h.Printf("app(%s) subscribe failed %v\n", c.GetName(), err)
 				c.SendError(err)
@@ -228,7 +229,7 @@ func (h *Hub) handle(c Conn) {
 				c.SendReply("OK")
 			}
 
-		case CDelChan:
+		case client.CDelChan:
 			if channel, err := c.Unsubscribe(line[1:]); err != nil {
 				h.Printf("app(%s) unsubscribe failed %v\n", c.GetName(), err)
 				c.SendError(err)
@@ -237,7 +238,7 @@ func (h *Hub) handle(c Conn) {
 				c.SendReply("OK")
 			}
 
-		case CPing:
+		case client.CPing:
 			p, err := c.ReadLen(line[1:])
 			if err != nil {
 				h.Println(err)
@@ -247,7 +248,7 @@ func (h *Hub) handle(c Conn) {
 
 			c.SendPong(p)
 
-		case CEvent:
+		case client.CEvent:
 			p, err := c.ReadLen(line[1:])
 			if err != nil {
 				h.Println(err)

@@ -11,29 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/colindev/events/client"
 	"github.com/colindev/events/server/store"
 )
 
 var (
-	// CAuth 登入名稱流前綴
-	CAuth byte = '$'
-	// CEvent 事件長度流前綴
-	CEvent byte = '='
-	// CAddChan 註冊頻道流前綴
-	CAddChan byte = '+'
-	// CDelChan 移除頻道流前綴
-	CDelChan byte = '-'
-	// CError 錯誤訊息流前綴
-	CError byte = '!'
-	// CReply 回應流前綴
-	CReply byte = '*'
-	// CPing client ping
-	CPing byte = '@'
-	// CPong reply ping
-	CPong byte = '@'
-	// CRecover client 請求過往資料
-	CRecover byte = '>'
-
 	// EOL 換行bytes
 	EOL = []byte{'\r', '\n'}
 )
@@ -271,25 +253,25 @@ func (c *conn) writeLen(prefix byte, n int) error {
 }
 
 func (c *conn) writeReply(m string) error {
-	c.w.WriteByte(CReply)
+	c.w.WriteByte(client.CReply)
 	_, err := c.w.WriteString(m)
 	return err
 }
 
 func (c *conn) writeError(err error) error {
-	c.writeLen(CError, len(err.Error()))
+	c.writeLen(client.CErr, len(err.Error()))
 	_, err = c.w.WriteString(err.Error())
 	return err
 }
 
 func (c *conn) writePong(ping []byte) error {
-	c.writeLen(CPong, len(ping))
+	c.writeLen(client.CPong, len(ping))
 	_, err := c.w.Write(ping)
 	return err
 }
 
 func (c *conn) writeEvent(e string) error {
-	c.writeLen(CEvent, len(e))
+	c.writeLen(client.CEvent, len(e))
 	_, err := c.w.WriteString(e)
 	return err
 }

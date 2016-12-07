@@ -14,17 +14,32 @@ import (
 	"github.com/colindev/events/event"
 )
 
-var (
-	CAuth    byte = '$'
-	CRecover byte = '>'
-	CAddChan byte = '+'
-	CDelChan byte = '-'
-	CReply   byte = '*'
-	CEvent   byte = '='
-	CPing    byte = '@'
-	CPong    byte = '@'
-	CErr     byte = '!'
+const (
 
+	// CAuth 登入名稱流前綴
+	CAuth byte = '$'
+	// CEvent 事件長度流前綴
+	CEvent byte = '='
+	// CAddChan 註冊頻道流前綴
+	CAddChan byte = '+'
+	// CDelChan 移除頻道流前綴
+	CDelChan byte = '-'
+	// CErr 錯誤訊息流前綴
+	CErr byte = '!'
+	// CReply 回應流前綴
+	CReply byte = '*'
+	// CPing client ping
+	CPing byte = '@'
+	// CPong reply ping
+	CPong byte = '@'
+	// CRecover client 請求過往資料
+	CRecover byte = '>'
+
+	MWrite = 1
+	MRead  = 2
+)
+
+var (
 	EOL = []byte{'\r', '\n'}
 )
 
