@@ -19,6 +19,15 @@ func createConn(s string) *conn {
 	return &conn{r: createBufReader(s)}
 }
 
+func TestFlag_String(t *testing.T) {
+
+	for s, i := range map[string]int{"rw": 3, "-w": 1, "r-": 2, "--": 0} {
+		if ss := Flag(i).String(); ss != s {
+			t.Errorf("Flag String error %d expect %s, but %s", i, s, ss)
+		}
+	}
+}
+
 func TestConn_readLine(t *testing.T) {
 	var (
 		c    *conn
@@ -262,10 +271,11 @@ func TestConn_Auth(t *testing.T) {
 
 	prefix := CAuth
 	authText := "test name"
-	expect := fmt.Sprintf("%c%s\r\n", prefix, authText)
+	flags := Writable | Readable
+	expect := fmt.Sprintf("%c%s:%d\r\n", prefix, authText, 3)
 
 	c.name = authText
-	c.Auth()
+	c.Auth(flags)
 
 	checkBuf("Auth", t, buf, bw, expect)
 }
@@ -274,21 +284,11 @@ func TestConn_Recover(t *testing.T) {
 	buf, bw, c := createBWC()
 
 	prefix := CRecover
-	expect := fmt.Sprintf("%c\r\n", prefix)
-
-	c.Recover()
-
-	checkBuf("Recover", t, buf, bw, expect)
-}
-
-func TestConn_RecoverSince(t *testing.T) {
-	buf, bw, c := createBWC()
-
-	prefix := CRecover
 	since := int64(12345600)
-	expect := fmt.Sprintf("%c%d\r\n", prefix, since)
+	until := int64(0)
+	expect := fmt.Sprintf("%c%d:%d\r\n", prefix, since, until)
 
-	c.RecoverSince(since)
+	c.Recover(since, until)
 
 	checkBuf("RecoverSince", t, buf, bw, expect)
 }

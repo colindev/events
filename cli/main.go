@@ -40,6 +40,7 @@ func main() {
 		listenEvents  = channels{}
 		launcherEvent string
 		recoverSince  int64
+		recoverUntil  int64
 		showVer       bool
 
 		cli = flag.CommandLine
@@ -50,7 +51,8 @@ func main() {
 	cli.StringVar(&listenAddr, "listen", "127.0.0.1:6300", "listen event address")
 	cli.StringVar(&launcherEvent, "fire", "", "fire event {name}:{data}")
 	cli.Var(&listenEvents, "event", "listen events")
-	cli.Int64Var(&recoverSince, "r", 0, "request recover since")
+	cli.Int64Var(&recoverSince, "since", 0, "request recover since")
+	cli.Int64Var(&recoverUntil, "until", 0, "request recover until")
 	cli.Parse(os.Args[1:])
 
 	if showVer {
@@ -88,9 +90,14 @@ func main() {
 		li.On(event.Event(ev.(string)), handler)
 	}
 
-	li.On(listener.Connected, func(ev event.Event, _ event.RawData) {
-		li.Recover(recoverSince)
+	err := li.On(listener.Connected, func(ev event.Event, _ event.RawData) {
+		log.Printf("recover since=%d until=%d\n", recoverSince, recoverUntil)
+		li.Recover(recoverSince, recoverUntil)
 	}).Run(listenEvents...)
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func buildHandler(cmdName string, cmdArgs []string) event.Handler {

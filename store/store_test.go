@@ -83,7 +83,7 @@ func TestEvent(t *testing.T) {
 				t.Errorf("expect %d Hash=%s, but %s", i, expect[i].Hash, ev.Hash)
 			}
 			i++
-		}, 2, nil)
+		}, nil, 2, 0)
 		if err != nil {
 			t.Error("EachEvents error: ", err)
 		}
@@ -102,7 +102,7 @@ func TestEvent(t *testing.T) {
 				t.Errorf("expect %d Hash=%s, but %s", i, expect[i].Hash, ev.Hash)
 			}
 			i++
-		}, 1, []string{"yy"})
+		}, []string{"yy"}, 1, 0)
 		if err != nil {
 			t.Error("EachEvents error: ", err)
 		}

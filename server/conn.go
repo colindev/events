@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"regexp"
 	"strings"
@@ -12,7 +13,7 @@ import (
 	"time"
 
 	"github.com/colindev/events/client"
-	"github.com/colindev/events/server/store"
+	"github.com/colindev/events/store"
 )
 
 // Conn 包裝 net.Conn (TCP) 連線
@@ -20,6 +21,11 @@ type Conn interface {
 	SetName(string)
 	GetName() string
 	HasName() bool
+	SetFlags(int)
+	Writable() bool
+	Readable() bool
+	SetAuthed(bool)
+	IsAuthed() bool
 	SetLastAuth(*store.Auth)
 	GetLastAuth() *store.Auth
 	RemoteAddr() string
@@ -40,11 +46,13 @@ type Conn interface {
 
 type conn struct {
 	sync.RWMutex
-	conn net.Conn
-	w    *bufio.Writer
-	r    *bufio.Reader
-	err  error
-	chs  map[string]*regexp.Regexp
+	conn   net.Conn
+	w      *bufio.Writer
+	r      *bufio.Reader
+	flags  int
+	err    error
+	chs    map[string]*regexp.Regexp
+	authed bool
 	// recover events 用
 	lastAuth    *store.Auth
 	connectedAt int64
@@ -86,6 +94,37 @@ func (c *conn) RemoteAddr() string {
 		return ""
 	}
 	return c.conn.RemoteAddr().String()
+}
+
+func (c *conn) SetFlags(flags int) {
+	// 如果 client 不指定讀取權限
+	// 就轉導 write buffer 到 ioutil.Discard
+	if flags&client.Readable > 0 {
+		c.w = bufio.NewWriter(c.conn)
+	} else {
+		c.w = bufio.NewWriter(ioutil.Discard)
+	}
+
+	c.flags = flags
+	// writeable 僅略過處理 event 資料
+	// 其餘的照常處理
+	// 由 Hub.handle 處理
+}
+
+func (c *conn) Writable() bool {
+	return (c.flags & client.Writable) != 0
+}
+
+func (c *conn) Readable() bool {
+	return (c.flags & client.Readable) != 0
+}
+
+func (c *conn) SetAuthed(t bool) {
+	c.authed = t
+}
+
+func (c *conn) IsAuthed() bool {
+	return c.authed
 }
 
 // GetAuth 回傳當前連線的登入紀錄

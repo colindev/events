@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -35,13 +36,33 @@ const (
 	// CRecover client 請求過往資料
 	CRecover byte = '>'
 
-	MWrite = 1
-	MRead  = 2
+	// Writable flag
+	Writable = 1
+	// Readable flag
+	Readable = 2
 )
 
 var (
 	EOL = []byte{'\r', '\n'}
 )
+
+// Flag is Read Write flag
+type Flag int
+
+func (i Flag) String() string {
+	var w, r string
+	if i&Readable == Readable {
+		r = "r"
+	} else {
+		r = "-"
+	}
+	if i&Writable == Writable {
+		w = "w"
+	} else {
+		w = "-"
+	}
+	return fmt.Sprintf("%s%s", r, w)
+}
 
 // Reply 包裝回應內容
 type Reply struct {
@@ -61,9 +82,8 @@ type Event struct {
 // Conn 包裝 net.Conn
 type Conn interface {
 	Close() error
-	Recover() error
-	RecoverSince(int64) error
-	Auth() error
+	Recover(int64, int64) error
+	Auth(int) error
 	Subscribe(...string) error
 	Unsubscribe(...string) error
 	Fire(event.Event, event.RawData) error
@@ -207,21 +227,16 @@ func (c *conn) writeEvent(p []byte) error {
 	return err
 }
 
-func (c *conn) Auth() error {
+func (c *conn) Auth(flags int) error {
 
 	c.w.WriteByte(CAuth)
-	c.w.WriteString(c.name)
+	c.w.WriteString(fmt.Sprintf("%s:%d", c.name, flags))
 	return c.flush()
 }
 
-func (c *conn) Recover() error {
+func (c *conn) Recover(since, until int64) error {
 	c.w.WriteByte(CRecover)
-	return c.flush()
-}
-
-func (c *conn) RecoverSince(i int64) error {
-	c.w.WriteByte(CRecover)
-	c.w.WriteString(strconv.FormatInt(i, 10))
+	c.w.WriteString(strconv.FormatInt(since, 10) + ":" + strconv.FormatInt(until, 10))
 	return c.flush()
 }
 

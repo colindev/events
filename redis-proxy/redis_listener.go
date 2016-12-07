@@ -37,7 +37,7 @@ func NewRedisListener(pool *redis.Pool) eventsListener.Listener {
 	}
 }
 
-func (l *listener) Recover(int64) error {
+func (l *listener) Recover(int64, int64) error {
 	return errors.New("not support")
 }
 

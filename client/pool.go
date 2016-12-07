@@ -108,6 +108,12 @@ func (p *pool) get() (Conn, error) {
 	}
 }
 
+// TODO 依照後續的使用狀況觀察評估
+// 是否還原連線的初始狀態
+// 作法有
+// 1. maxIdle 設定為 0, 讓連線池每次都重新建立連線
+// 2. 回收連線後先把 flags 設定成 read only 或 0
+// 3. 送個 reset 給 server 處理
 func (p *pool) put(c Conn) error {
 	// TODO 處理錯誤連線
 	// TODO 評估處理超時連線
@@ -138,7 +144,7 @@ func (p *pool) put(c Conn) error {
 	return c.Close()
 }
 
-// 只能 Fire, Close, Receive, Ping
+// 只能 Auth, Fire, Close, Receive, Ping
 // 不處理其他方法,省略清除原本通訊設定
 type maskConn struct {
 	p *pool
@@ -154,16 +160,13 @@ func (m *maskConn) Ping(s string) error {
 func (m *maskConn) Receive() (interface{}, error) {
 	return m.c.Receive()
 }
+func (m *maskConn) Auth(i int) error {
+	return m.c.Auth(i)
+}
 func (m *maskConn) Close() error {
 	return m.p.put(m.c)
 }
-func (m *maskConn) Auth() error {
-	return errors.New("pooled conn not support Auth()")
-}
-func (m *maskConn) Recover() error {
-	return errors.New("pooled conn not support Recover()")
-}
-func (m *maskConn) RecoverSince(int64) error {
+func (m *maskConn) Recover(int64, int64) error {
 	return errors.New("pooled conn not support RecoverSince()")
 }
 func (m *maskConn) Subscribe(...string) error {
@@ -179,9 +182,8 @@ type errConn struct{ err error }
 func (err *errConn) Fire(event.Event, event.RawData) error { return err.err }
 func (err *errConn) Receive() (interface{}, error)         { return nil, err.err }
 func (err *errConn) Close() error                          { return err.err }
-func (err *errConn) Auth() error                           { return err.err }
+func (err *errConn) Auth(int) error                        { return err.err }
 func (err *errConn) Ping(string) error                     { return err.err }
-func (err *errConn) Recover() error                        { return err.err }
-func (err *errConn) RecoverSince(int64) error              { return err.err }
+func (err *errConn) Recover(int64, int64) error            { return err.err }
 func (err *errConn) Subscribe(...string) error             { return err.err }
 func (err *errConn) Unsubscribe(...string) error           { return err.err }

@@ -10,10 +10,73 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/colindev/events/client"
+	"github.com/colindev/events/server/fake"
 )
 
+func TestNewConnAndGetAuth(t *testing.T) {
+	now := time.Now()
+	c := newConn(nil, now)
+
+	if auth := c.GetAuth(); auth.ConnectedAt != now.Unix() {
+		t.Error("conn auth connected_at error", auth)
+	}
+}
+
+func TestConnName(t *testing.T) {
+	c := &conn{}
+
+	name := "abc"
+	c.SetName(name)
+
+	if !c.HasName() {
+		t.Error("Conn.HasName return false")
+	}
+	if s := c.GetName(); s != name {
+		t.Errorf("Conn.GetName error: expect %s, but %s", name, s)
+	}
+}
+
+func TestConn_SetFlags(t *testing.T) {
+	c := &conn{conn: &fake.NetConn{}}
+
+	// no flags
+	c.SetFlags(0)
+	c.conn.(*fake.NetConn).W = func([]byte) (int, error) { return 0, errors.New("替換 write buffer 到 ioutil discard 失敗") }
+	if c.Writable() {
+		t.Error("this conn can't write")
+	}
+	c.w.WriteString("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	if err := c.w.Flush(); err != nil {
+		t.Error(err)
+	}
+
+	// write only client/conn 應該被替換成 ioutil.Discard / Conn.Writable 應該是true 表示接收 Conn.Receive 傳來的 stream
+	c.SetFlags(client.Writable)
+	if !c.Writable() {
+		t.Error("this conn is writable")
+	}
+	c.w.WriteString("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	if err := c.w.Flush(); err != nil {
+		t.Error(err)
+	}
+
+	// read only client/conn w 為正確的net.Conn / Conn.Writable 應該回傳 false 表示 Conn.Recieve 的 Event stream 會被丟棄
+	c.SetFlags(client.Readable)
+	c.conn.(*fake.NetConn).W = func([]byte) (int, error) { return 0, io.EOF }
+	if c.Writable() {
+		t.Error("this conn can't write")
+	}
+	c.w.WriteString("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	if err := c.w.Flush(); err != io.EOF {
+		t.Error(err)
+	}
+
+}
+
 func TestConn_EachChannels(t *testing.T) {
-	c := conn{
+	c := &conn{
 		chs: map[string]*regexp.Regexp{
 			"a": nil,
 			"b": nil,

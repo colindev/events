@@ -146,14 +146,18 @@ func (s *Store) newEvent(ev *Event) error {
 	return s.events.Create(ev).Error
 }
 
-func (s *Store) EachEvents(f func(*Event), since int64, prefix []string) error {
+func (s *Store) EachEvents(f func(*Event), prefix []string, since, until int64) error {
 
 	offset := 0
 	limit := 100
 
-	db := s.events.Limit(limit).Order("received_at ASC")
+	db := s.events.Where("received_at >= ?", since).Limit(limit).Order("received_at ASC")
 	if len(prefix) > 0 {
 		db = db.Where("prefix IN (?)", prefix)
+	}
+
+	if until > 0 {
+		db = db.Where("received_at <= ?", until)
 	}
 
 	defer func() {
@@ -164,7 +168,7 @@ func (s *Store) EachEvents(f func(*Event), since int64, prefix []string) error {
 
 	for {
 		var list []*Event
-		ret := db.Where("received_at >= ?", since).Offset(offset).Find(&list)
+		ret := db.Offset(offset).Find(&list)
 		if ret.Error != nil {
 			return ret.Error
 		}

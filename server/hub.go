@@ -8,18 +8,19 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
-	"github.com/colindev/events/server/store"
+	"github.com/colindev/events/store"
 )
 
 // Hub 負責管理連線
 type Hub struct {
-	*sync.RWMutex
+	sync.RWMutex
 	// 需作歷程管理
 	m map[string]Conn
 	// 不須作歷程管理
@@ -42,11 +43,10 @@ func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 	}
 
 	return &Hub{
-		RWMutex: &sync.RWMutex{},
-		m:       map[string]Conn{},
-		g:       map[Conn]bool{},
-		store:   sto,
-		Logger:  logger,
+		m:      map[string]Conn{},
+		g:      map[Conn]bool{},
+		store:  sto,
+		Logger: logger,
 	}, nil
 }
 
@@ -56,7 +56,19 @@ func (h *Hub) auth(c Conn, p []byte) error {
 	h.Lock()
 	defer h.Unlock()
 
-	name := strings.TrimSpace(string(p))
+	// 設定讀寫權限
+	s := strings.SplitN(strings.TrimSpace(string(p)), ":", 2)
+	if len(s) != 2 {
+		return fmt.Errorf("auth data schema error: %s", p)
+	}
+	name := s[0]
+	flags, err := strconv.Atoi(s[1])
+	if err != nil {
+		return fmt.Errorf("auth flags error: %v", err)
+	}
+	c.SetFlags(flags)
+	h.Println("auth[name]=", name)
+	h.Println("auth[flags]=", client.Flag(flags).String())
 
 	// 匿名登入
 	if name == "" {
@@ -69,7 +81,16 @@ func (h *Hub) auth(c Conn, p []byte) error {
 	}
 
 	c.SetName(name)
+	if c.IsAuthed() {
+		for n, x := range h.m {
+			if x == c {
+				delete(h.m, n)
+				break
+			}
+		}
+	}
 	h.m[name] = c
+	c.SetAuthed(true)
 	auth, err := h.store.GetLast(name)
 	if err != nil {
 		return err
@@ -84,11 +105,13 @@ func (h *Hub) auth(c Conn, p []byte) error {
 }
 
 // Quit 執行退出紀錄
-func (h *Hub) quit(c Conn, t time.Time) {
+func (h *Hub) quit(c Conn, t time.Time) (auth *store.Auth) {
 	var err error
 	h.Lock()
 	defer h.Unlock()
 	defer c.Close(err)
+	auth = c.GetAuth()
+	auth.DisconnectedAt = t.Unix()
 
 	if !c.HasName() {
 		delete(h.g, c)
@@ -96,12 +119,11 @@ func (h *Hub) quit(c Conn, t time.Time) {
 	}
 
 	delete(h.m, c.GetName())
-	auth := c.GetAuth()
-	auth.DisconnectedAt = t.Unix()
 	if err := h.store.UpdateAuth(auth); err != nil {
 		h.Println(err)
 	}
 	h.Printf("[hub] %s quit: %+v\n", c.GetName(), auth)
+	return
 }
 
 func (h *Hub) quitAll(t time.Time) {
@@ -144,8 +166,7 @@ func (h *Hub) publish(e *store.Event) int {
 	return cnt
 }
 
-func (h *Hub) recover(c Conn, since int64) error {
-	h.Printf("recover: %+v since %d\n", c, since)
+func (h *Hub) recover(c Conn, since, until int64) error {
 
 	if since == 0 {
 		// NOTE 沒上一次的登入紀錄時不重送全部訊息
@@ -159,20 +180,24 @@ func (h *Hub) recover(c Conn, since int64) error {
 		since = lastAuth.DisconnectedAt
 	}
 
+	if until <= 0 {
+		until = time.Now().Unix()
+	}
+
 	prefix := []string{}
-	c.EachChannels(func(ch string, re *regexp.Regexp) string {
+	chs := c.EachChannels(func(ch string, re *regexp.Regexp) string {
 		prefix = append(prefix, event.Event(ch).Type())
-		return ""
+		return ch
 	})
 
-	h.store.EachEvents(func(e *store.Event) {
+	h.Printf("recover: %s(%s) since=%d until=%d channels=%v\n", c.RemoteAddr(), c.GetName(), since, until, chs)
+
+	return h.store.EachEvents(func(e *store.Event) {
 		if c.IsListening(e.Name) {
 			h.Printf("resend %s: %+v\n", c.GetName(), e)
 			c.SendEvent(e.Raw)
 		}
-	}, since, prefix)
-
-	return nil
+	}, prefix, since, until)
 }
 
 func (h *Hub) handle(c Conn) {
@@ -184,9 +209,9 @@ func (h *Hub) handle(c Conn) {
 		}
 	}()
 
+	h.Println(c.RemoteAddr(), " connect")
 	for {
 		line, err := c.ReadLine()
-		h.Printf("<- client [%s]: %v = [%s] %v\n", c.RemoteAddr(), line, line, err)
 		if err != nil {
 			return
 		}
@@ -207,18 +232,20 @@ func (h *Hub) handle(c Conn) {
 
 		case client.CRecover:
 			var (
-				n   int64
-				err error
+				since, until int64
 			)
-			if len(line[1:]) > 0 {
-				n, err = parseLen(line[1:])
+			// TODO 先可以跑
+			// 後面改 byte 處理
+			s := strings.SplitN(string(line[1:]), ":", 2)
+			since, _ = strconv.ParseInt(s[0], 10, 64)
+			if len(s) == 2 {
+				until, _ = strconv.ParseInt(s[1], 10, 64)
 			}
-			if err != nil {
-				h.Println(err)
+
+			if err := h.recover(c, since, until); err != nil {
+				h.Printf("recover since=%d until=%d error: %v\n", since, until, err)
 				c.SendError(err)
-				return
 			}
-			h.recover(c, n)
 
 		case client.CAddChan:
 			if channel, err := c.Subscribe(line[1:]); err != nil {
@@ -226,7 +253,7 @@ func (h *Hub) handle(c Conn) {
 				c.SendError(err)
 			} else {
 				h.Printf("app(%s) subscribe [%s]\n", c.GetName(), channel)
-				c.SendReply("OK")
+				c.SendReply("subscribe " + channel + " OK")
 			}
 
 		case client.CDelChan:
@@ -235,7 +262,7 @@ func (h *Hub) handle(c Conn) {
 				c.SendError(err)
 			} else {
 				h.Printf("app(%s) unsubscribe [%s]\n", c.GetName(), channel)
-				c.SendReply("OK")
+				c.SendReply("unsubscribe " + channel + " OK")
 			}
 
 		case client.CPing:
@@ -254,6 +281,11 @@ func (h *Hub) handle(c Conn) {
 				h.Println(err)
 				c.SendError(err)
 				return
+			}
+
+			if !c.Writable() {
+				h.Println("this conn has no writable flag, event droped")
+				continue
 			}
 
 			eventName, eventData, err := parseEvent(p)
