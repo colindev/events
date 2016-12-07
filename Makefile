@@ -3,7 +3,13 @@ VERSION := `git describe --tags | cut -d '-' -f 1`.`git rev-parse --short HEAD`
 all: dep test _events-cli _server _redis-proxy
 
 dep:
-	go get -a -x ./{client,event,eventd,launcher,listener,redis-proxy,server}/...
+	go get -a ./client/
+	go get -a ./event/
+	go get -a ./eventd/
+	go get -a ./launcher/
+	go get -a ./listener/
+	go get -a ./redis-proxy/
+	go get -a ./server/...
 
 test:
 	go test -v -bench . ./...
