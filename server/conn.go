@@ -15,11 +15,6 @@ import (
 	"github.com/colindev/events/server/store"
 )
 
-var (
-	// EOL 換行bytes
-	EOL = []byte{'\r', '\n'}
-)
-
 // Conn 包裝 net.Conn (TCP) 連線
 type Conn interface {
 	SetName(string)
@@ -226,7 +221,7 @@ func (c *conn) Close(err error) error {
 }
 
 func (c *conn) flush() error {
-	c.w.Write(EOL)
+	c.w.Write(client.EOL)
 	if err := c.w.Flush(); err != nil {
 		return c.Close(err)
 	}
@@ -248,7 +243,7 @@ func (c *conn) writeLen(prefix byte, n int) error {
 
 	c.w.WriteByte(prefix)
 	c.w.Write(c.lenBox[i+1:])
-	_, err := c.w.Write(EOL)
+	_, err := c.w.Write(client.EOL)
 	return err
 }
 
