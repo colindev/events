@@ -48,7 +48,7 @@ func main() {
 
 	cli.BoolVar(&showVer, "v", false, "version")
 	cli.StringVar(&appName, "app", "", "app name")
-	cli.StringVar(&listenAddr, "listen", "127.0.0.1:6300", "listen event address")
+	cli.StringVar(&listenAddr, "server", "127.0.0.1:6300", "listen event address")
 	cli.StringVar(&launcherEvent, "fire", "", "fire event {name}:{data}")
 	cli.Var(&listenEvents, "event", "listen events")
 	cli.Int64Var(&recoverSince, "since", 0, "request recover since")
