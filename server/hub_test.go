@@ -13,8 +13,8 @@ func createHub(t *testing.T) *Hub {
 
 	hub, err := NewHub(&Env{
 		Debug:      true,
-		AuthDSN:    ":file::memory:",
-		EventDSN:   ":file::memory:",
+		AuthDSN:    "file::memory:?cache=shared",
+		EventDSN:   "file::memory:?cache=shared",
 		GCDuration: "1h",
 	}, log.New(os.Stdout, "", log.LstdFlags))
 	if err != nil {
