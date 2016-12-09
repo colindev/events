@@ -89,6 +89,7 @@ type Conn interface {
 	Fire(event.Event, event.RawData) error
 	Ping(string) error
 	Receive() (interface{}, error)
+	Conn() net.Conn
 }
 
 type conn struct {
@@ -118,6 +119,10 @@ func Dial(name, addr string) (Conn, error) {
 		w:     bufio.NewWriter(c),
 		r:     bufio.NewReader(c),
 	}, nil
+}
+
+func (c *conn) Conn() net.Conn {
+	return c.conn
 }
 
 func (c *conn) Close() error {

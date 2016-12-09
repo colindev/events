@@ -73,6 +73,11 @@ func TestConn_SetFlags(t *testing.T) {
 		t.Error(err)
 	}
 
+	c.SetFlags(client.Writable | client.Readable)
+	if !c.Writable() {
+		t.Error("SetFlag(W|R) but Conn.Writable() return false")
+	}
+
 }
 
 func TestConn_EachChannels(t *testing.T) {

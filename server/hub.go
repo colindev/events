@@ -284,7 +284,7 @@ func (h *Hub) handle(c Conn) {
 			}
 
 			if !c.Writable() {
-				h.Println("this conn has no writable flag, event droped")
+				h.Printf("this (%p)%#v has no writable flag, event droped\n", c.(*conn), c)
 				continue
 			}
 
@@ -307,7 +307,7 @@ func (h *Hub) handle(c Conn) {
 }
 
 // ListenAndServe listen address and serve conn
-func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string) error {
+func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string, others ...Conn) error {
 
 	network := "tcp"
 
@@ -321,14 +321,17 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string) error {
 		return err
 	}
 
+	for _, c := range others {
+		go h.handle(c)
+	}
 	go func() {
 		for {
-			conn, err := listener.Accept()
+			c, err := listener.Accept()
 			if err != nil {
 				h.Println("conn: ", err)
 				return
 			}
-			go h.handle(newConn(conn, time.Now()))
+			go h.handle(newConn(c, time.Now()))
 		}
 	}()
 

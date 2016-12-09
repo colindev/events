@@ -3,6 +3,7 @@ package client
 import (
 	"container/list"
 	"errors"
+	"net"
 	"sync"
 
 	"github.com/colindev/events/event"
@@ -175,6 +176,9 @@ func (m *maskConn) Subscribe(...string) error {
 func (m *maskConn) Unsubscribe(...string) error {
 	return errors.New("pooled conn not support Unsubscribe()")
 }
+func (m *maskConn) Conn() net.Conn {
+	return m.c.Conn()
+}
 
 // errConn
 type errConn struct{ err error }
@@ -187,3 +191,4 @@ func (err *errConn) Ping(string) error                     { return err.err }
 func (err *errConn) Recover(int64, int64) error            { return err.err }
 func (err *errConn) Subscribe(...string) error             { return err.err }
 func (err *errConn) Unsubscribe(...string) error           { return err.err }
+func (err *errConn) Conn() net.Conn                        { return nil }
