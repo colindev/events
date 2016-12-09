@@ -6,6 +6,12 @@ Depend on Redis
 [![Build Status](https://travis-ci.org/colindev/events.svg?branch=master)](https://travis-ci.org/colindev/events)
 [![GoDoc](https://godoc.org/github.com/colindev/events?status.svg)](https://godoc.org/github.com/colindev/events)
 
+### Server
+
+```golang
+./events-server -env [env file]
+```
+
 ### Listaner
 
 ```golang

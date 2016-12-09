@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"testing"
 	"time"
@@ -43,6 +44,9 @@ func (m *fake) Subscribe(chs ...string) error {
 }
 func (m *fake) Unsubscribe(chs ...string) error {
 	m.fn(m.Unsubscribe, chs)
+	return nil
+}
+func (m *fake) Conn() net.Conn {
 	return nil
 }
 
