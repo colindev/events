@@ -17,10 +17,10 @@ test:
 build-all: _cli _server _redis-proxy
 
 _cli:
-	go build -a -ldflags "-X main.version='$(VERSION)'" -o bin/events-cli ./cli/
+	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/events-cli ./cli/
 
 _server:
-	go build -a -ldflags "-X main.version='$(VERSION)'" -o bin/events-server ./server/
+	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/events-server ./server/
 
 _redis-proxy:
-	go build -a -ldflags "-X main.version='$(VERSION)'" -o bin/redis-proxy ./redis-proxy/
+	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/redis-proxy ./redis-proxy/
