@@ -7,7 +7,7 @@ import (
 
 const (
 	// PONG is event for redis ping/pong
-	PONG Event = "PONG"
+	PONG Event = "pong"
 )
 
 type (
