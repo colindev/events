@@ -56,7 +56,7 @@ func main() {
 	cli.Parse(os.Args[1:])
 
 	if showVer {
-		fmt.Println("events-cli: ", version)
+		fmt.Println(version)
 		os.Exit(0)
 	}
 

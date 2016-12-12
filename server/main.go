@@ -27,7 +27,7 @@ func init() {
 	flag.Parse()
 
 	if *showVer {
-		fmt.Println("events-driver: ", version)
+		fmt.Println(version)
 		os.Exit(0)
 	}
 
