@@ -146,11 +146,12 @@ func (h *Hub) publish(e *store.Event) int {
 	h.RLock()
 	defer h.RUnlock()
 
+	h.Println("publish: ", e.Raw)
 	var cnt int
 	for name, c := range h.m {
 		if c.IsListening(e.Name) {
 			cnt++
-			h.Printf("write to %s: %s\n", name, e.Raw)
+			h.Printf("receiver: %s(%s)", c.RemoteAddr(), name)
 			go c.SendEvent(e.Raw)
 		}
 	}
@@ -158,7 +159,7 @@ func (h *Hub) publish(e *store.Event) int {
 	for c := range h.g {
 		if c.IsListening(e.Name) {
 			cnt++
-			h.Printf("write to ghost: %s\n", e.Raw)
+			h.Println("receiver: ", c.RemoteAddr())
 			go c.SendEvent(e.Raw)
 		}
 	}
@@ -192,9 +193,11 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 
 	h.Printf("recover: %s(%s) since=%d until=%d channels=%v\n", c.RemoteAddr(), c.GetName(), since, until, chs)
 
+	// 回傳其他值是為了測試用
 	return h.store.EachEvents(func(e *store.Event) {
 		if c.IsListening(e.Name) {
-			h.Printf("resend %s: %+v\n", c.GetName(), e)
+			// 先不浪費I/O了
+			// h.Printf("resend %s: %+v\n", c.GetName(), e)
 			c.SendEvent(e.Raw)
 		}
 	}, prefix, since, until)

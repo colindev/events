@@ -1,3 +1,6 @@
+/*
+預計之後壓力測試用
+*/
 package main
 
 import (
