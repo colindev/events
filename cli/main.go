@@ -69,6 +69,7 @@ func main() {
 	if ev := strings.SplitN(launcherEvent, ":", 2); len(ev) == 2 {
 		log.Println(la.Fire(event.Event(ev[0]), event.RawData(ev[1])))
 	}
+	defer la.Close()
 
 	// listener
 	li := listener.New(dial)
@@ -98,6 +99,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 }
 
 func buildHandler(cmdName string, cmdArgs []string) event.Handler {

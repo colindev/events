@@ -79,6 +79,7 @@ var (
 
 type Receiver interface {
 	Fire(event.Event, event.RawData) error
+	Close() error
 }
 
 type Notifyer struct {

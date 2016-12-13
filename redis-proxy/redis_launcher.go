@@ -9,6 +9,7 @@ type (
 	// Launcher responsible for event data
 	RedisLauncher interface {
 		Fire(event.Event, event.RawData) error
+		Close() error
 	}
 
 	launcher struct {
@@ -29,4 +30,8 @@ func (l *launcher) Fire(ev event.Event, rd event.RawData) (err error) {
 	_, err = conn.Do("PUBLISH", ev.String(), rd.String())
 
 	return err
+}
+
+func (l *launcher) Close() error {
+	return l.pool.Close()
 }
