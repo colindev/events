@@ -1,7 +1,8 @@
 package client
 
 import (
-	"fmt"
+	"errors"
+	"math/rand"
 	"net"
 	"strconv"
 	"testing"
@@ -49,38 +50,21 @@ func (m *fake) Unsubscribe(chs ...string) error {
 func (m *fake) Conn() net.Conn {
 	return nil
 }
-
-func Example_maskConn() {
-	p := NewPool(func() (Conn, error) {
-		return &fake{
-			fn: func(v ...interface{}) {
-				fmt.Printf("%T %v\n", v[0], v[1:])
-			},
-		}, nil
-	}, 1)
-
-	// masked
-	p.Get().Close()
-	p.Get().Recover(2, 3)
-	p.Get().Subscribe("x", "y", "z")
-	p.Get().Unsubscribe("x", "y", "z")
-
-	// adapted
-	p.Get().Auth(1)
-	p.Get().Fire("a", []byte{'b'})
-	p.Get().Ping("pong")
-	p.Get().Receive()
-	// output:
-	// func(int) error [1]
-	// func(event.Event, event.RawData) error [a b]
-	// func(string) error [pong]
-	// func() (interface {}, error) []
+func (m *fake) Err() error {
+	m.fn(m.Err)
+	rand.Seed(int64(time.Now().Nanosecond()))
+	if rand.Intn(30)%2 == 0 {
+		return errors.New("fake test error")
+	}
+	return nil
 }
 
 func TestPool(t *testing.T) {
 
 	p := NewPool(func() (Conn, error) {
-		return &fake{fn: func(v ...interface{}) {}}, nil
+		return &fake{
+			fn: func(v ...interface{}) {},
+		}, nil
 	}, 3)
 
 	p.MaxActive(10)

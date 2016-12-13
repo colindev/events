@@ -90,6 +90,7 @@ type Conn interface {
 	Ping(string) error
 	Receive() (interface{}, error)
 	Conn() net.Conn
+	Err() error
 }
 
 type conn struct {
@@ -292,6 +293,10 @@ func (c *conn) flush() error {
 	}
 
 	return nil
+}
+
+func (c *conn) Err() error {
+	return c.err
 }
 
 func parseLen(p []byte) (int64, error) {

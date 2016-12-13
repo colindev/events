@@ -116,20 +116,16 @@ func (p *pool) get() (Conn, error) {
 // 2. 回收連線後先把 flags 設定成 read only 或 0
 // 3. 送個 reset 給 server 處理
 func (p *pool) put(c Conn) error {
-	// TODO 處理錯誤連線
 	// TODO 評估處理超時連線
 	p.mu.Lock()
 
-	if c == nil {
-		p.mu.Unlock()
-		return errors.New("conn is nil")
-	}
-
-	p.list.PushFront(c)
-	if p.list.Len() > p.maxIdle {
-		c = p.list.Remove(p.list.Back()).(Conn)
-	} else {
-		c = nil
+	if err := c.Err(); err == nil {
+		p.list.PushFront(c)
+		if p.list.Len() > p.maxIdle {
+			c = p.list.Remove(p.list.Back()).(Conn)
+		} else {
+			c = nil
+		}
 	}
 
 	if c == nil {
@@ -179,6 +175,9 @@ func (m *maskConn) Unsubscribe(...string) error {
 func (m *maskConn) Conn() net.Conn {
 	return m.c.Conn()
 }
+func (m *maskConn) Err() error {
+	return m.c.Err()
+}
 
 // errConn
 type errConn struct{ err error }
@@ -192,3 +191,4 @@ func (err *errConn) Recover(int64, int64) error            { return err.err }
 func (err *errConn) Subscribe(...string) error             { return err.err }
 func (err *errConn) Unsubscribe(...string) error           { return err.err }
 func (err *errConn) Conn() net.Conn                        { return nil }
+func (err *errConn) Err() error                            { return err.err }
