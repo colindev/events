@@ -210,6 +210,7 @@ func (h *Hub) handle(c Conn) {
 		if err := c.Err(); err != nil {
 			h.Println("conn error:", err)
 		}
+		h.Println(c.RemoteAddr(), " disconnect")
 	}()
 
 	h.Println(c.RemoteAddr(), " connect")
@@ -312,6 +313,7 @@ func (h *Hub) handle(c Conn) {
 // ListenAndServe listen address and serve conn
 func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string, others ...Conn) error {
 
+	var err error
 	network := "tcp"
 
 	tcpAddr, err := net.ResolveTCPAddr(network, addr)
@@ -342,8 +344,12 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string, others ...Conn)
 	h.Printf("Receive os.Signal %s\n", s)
 	h.quitAll(time.Now())
 	h.Println("h.quitAll")
-	return listener.Close()
+	err = listener.Close()
+	h.Println("close listener")
+	h.store.Close()
+	h.Println("close store")
 
+	return err
 }
 
 func makeEventStream(event, data []byte) []byte {
