@@ -86,3 +86,27 @@ func TestForge(t *testing.T) {
 		t.Error("fire miss")
 	}
 }
+
+var benchData = event.RawData("")
+
+func BenchmarkFire(b *testing.B) {
+
+	n := 0
+	pool := client.NewPool(func() (client.Conn, error) {
+		return &fake{fn: func(v ...interface{}) {
+			if v[0] == "Fire" {
+				n++
+				time.Sleep(time.Nanosecond * 50)
+			}
+		}}, nil
+	}, 1)
+	pool.MaxActive(20)
+	l := New(pool)
+
+	for i := 0; i < b.N; i++ {
+		l.Fire("test.event", benchData)
+	}
+
+	l.Close()
+	//fmt.Printf("run %d, fire %d\n", b.N, n)
+}
