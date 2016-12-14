@@ -61,14 +61,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	receiver, err := parseReceiver(s[1])
+	receiver, mode, err := parseReceiver(s[1])
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT)
-	notifyer.Notify(receiver).Run(shutdown, chs...)
+	notifyer.Notify(receiver, mode).Run(shutdown, chs...)
 
 }
 
@@ -83,8 +83,10 @@ type Receiver interface {
 }
 
 type Notifyer struct {
-	from eventsListener.Listener
-	to   Receiver
+	fromType string
+	from     eventsListener.Listener
+	toType   string
+	to       Receiver
 }
 
 func (rds *Notifyer) Run(shutdown <-chan os.Signal, chs ...interface{}) error {
@@ -105,13 +107,18 @@ func (rds *Notifyer) Run(shutdown <-chan os.Signal, chs ...interface{}) error {
 
 	go rds.from.Run(chs...)
 
+	log.Printf("run: \033[32m%s\033[m -> \033[32m%s\033[m\n", rds.fromType, rds.toType)
+
 	<-shutdown
+	log.Printf("try stop listener(%s)\n", rds.fromType)
 	rds.from.Stop()
+	log.Printf("try stop launcher(%s)\n", rds.toType)
 	return rds.to.Close()
 }
 
-func (rds *Notifyer) Notify(to Receiver) *Notifyer {
+func (rds *Notifyer) Notify(to Receiver, toType string) *Notifyer {
 	rds.to = to
+	rds.toType = toType
 	return rds
 }
 
@@ -123,7 +130,9 @@ func parseNotifyer(addr string) (*Notifyer, error) {
 	}
 	addr = s[1]
 
-	var from eventsListener.Listener
+	var (
+		from eventsListener.Listener
+	)
 	switch s[0] {
 	case "redis":
 		from = NewRedisListener(redis.NewPool(func() (redis.Conn, error) {
@@ -139,13 +148,16 @@ func parseNotifyer(addr string) (*Notifyer, error) {
 		return nil, errors.New("[Listener] 不支援該 server 事件接收")
 	}
 
-	return &Notifyer{from: from}, nil
+	return &Notifyer{
+		from:     from,
+		fromType: s[0],
+	}, nil
 }
 
-func parseReceiver(addr string) (Receiver, error) {
+func parseReceiver(addr string) (Receiver, string, error) {
 	s := strings.SplitN(addr, "://", 2)
 	if len(s) != 2 {
-		return nil, errNotifyerAddr
+		return nil, "", errNotifyerAddr
 	}
 	addr = s[1]
 
@@ -162,8 +174,8 @@ func parseReceiver(addr string) (Receiver, error) {
 	}
 
 	if to == nil {
-		return nil, errors.New("[Launcher] 不支援該 server 事件轉發")
+		return nil, s[0], errors.New("[Launcher] 不支援該 server 事件轉發")
 	}
 
-	return to, nil
+	return to, s[0], nil
 }
