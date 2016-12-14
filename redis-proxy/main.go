@@ -106,7 +106,8 @@ func (rds *Notifyer) Run(shutdown <-chan os.Signal, chs ...interface{}) error {
 	go rds.from.Run(chs...)
 
 	<-shutdown
-	return rds.from.Stop()
+	rds.from.Stop()
+	return rds.to.Close()
 }
 
 func (rds *Notifyer) Notify(to Receiver) *Notifyer {
