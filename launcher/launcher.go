@@ -1,7 +1,6 @@
 package launcher
 
 import (
-	"log"
 	"sync"
 	"time"
 
@@ -58,7 +57,6 @@ func (l *launcher) reduce(du time.Duration) {
 	for ca := range l.c {
 		for {
 			if err := conn.Fire(ca.Event, ca.RawData); err == nil {
-				log.Println("[launcher] reduce error:", err)
 				break
 			}
 			conn.Close()
