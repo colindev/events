@@ -91,7 +91,7 @@ func main() {
 		li.On(event.Event(ev.(string)), handler)
 	}
 
-	err := li.On(event.Connected, func(ev event.Event, _ event.RawData) {
+	err := li.On(event.Ready, func(ev event.Event, _ event.RawData) {
 		log.Printf("recover since=%d until=%d\n", recoverSince, recoverUntil)
 		li.Recover(recoverSince, recoverUntil)
 	}).Run(listenEvents...)

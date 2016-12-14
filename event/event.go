@@ -11,6 +11,9 @@ const (
 
 	// Connected 連線事件
 	Connected Event = "connected"
+
+	// Ready 登入 註冊頻道 等處理完畢
+	Ready Event = "ready"
 )
 
 type (

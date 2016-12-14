@@ -116,6 +116,7 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	}
 	l.chs = convChans
 
+	padding := len(l.chs)
 	for {
 		m, err := conn.Receive()
 		if err != nil {
@@ -126,6 +127,12 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 		case *client.Event:
 			go l.Trigger(m.Name, m.Data)
 		case *client.Reply:
+			if padding > 0 {
+				padding--
+				if padding == 0 {
+					go l.Trigger(event.Ready, nil)
+				}
+			}
 			log.Println("[event] reply ", m.String())
 		default:
 			log.Printf("[event] unexpect %#v\n", m)
