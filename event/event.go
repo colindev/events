@@ -8,6 +8,9 @@ import (
 const (
 	// PONG is event for redis ping/pong
 	PONG Event = "pong"
+
+	// Connected 連線事件
+	Connected Event = "connected"
 )
 
 type (

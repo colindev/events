@@ -213,6 +213,18 @@ func (h *Hub) handle(c Conn) {
 		h.Println(c.RemoteAddr(), " disconnect")
 	}()
 
+	// 登入的第一個訊息一定是登入訊息
+	line, err := c.ReadLine()
+	if err != nil {
+		return
+	} else if err := h.auth(c, line[1:]); err != nil {
+		h.Println(err)
+		c.SendError(err)
+		return
+	}
+
+	c.SendEvent(fmt.Sprintf("%s:ok", event.Connected))
+
 	h.Println(c.RemoteAddr(), " connect")
 	for {
 		line, err := c.ReadLine()

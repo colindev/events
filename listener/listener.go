@@ -35,9 +35,6 @@ type (
 )
 
 var (
-	// Connected 成功建立連線後觸發
-	Connected event.Event = "connected"
-
 	// ErrListenerAlreadyRunning prevent run second time
 	ErrListenerAlreadyRunning = errors.New("[events] Listener already running")
 	// ErrListenerNotRunning prevent access nil resource
@@ -118,8 +115,6 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 		return err
 	}
 	l.chs = convChans
-
-	l.Trigger(Connected, nil)
 
 	for {
 		m, err := conn.Receive()
