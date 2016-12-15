@@ -12,7 +12,7 @@ dep:
 	go get -a ./redis-proxy/
 
 test:
-	go test -v -bench . ./...
+	go test -v -race -bench . ./...
 
 build-all: _cli _server _redis-proxy
 
