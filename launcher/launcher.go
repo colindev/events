@@ -35,7 +35,7 @@ func New(pool client.Pool) Launcher {
 	}
 
 	l.wg.Add(1)
-	go l.reduce(time.Millisecond)
+	go l.reduce(time.Millisecond * 300)
 
 	return l
 }
