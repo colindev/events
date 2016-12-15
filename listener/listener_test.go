@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -55,11 +56,14 @@ func TestListener(t *testing.T) {
 func TestListener_RunForever(t *testing.T) {
 
 	var (
+		lc      sync.Mutex
 		trigged int
 		quit    = make(chan os.Signal, 1)
 	)
 
 	dial := func() (client.Conn, error) {
+		lc.Lock()
+		defer lc.Unlock()
 		t.Logf("disconn(%d) Dialing...", trigged)
 		if trigged >= 3 {
 			t.Log("dial signal quit")
@@ -69,6 +73,8 @@ func TestListener_RunForever(t *testing.T) {
 	}
 
 	l := New(dial).On(event.Disconnected, func(ev event.Event, rd event.RawData) {
+		lc.Lock()
+		defer lc.Unlock()
 		t.Logf("%s: %s", ev, rd)
 		trigged++
 	})

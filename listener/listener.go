@@ -66,20 +66,29 @@ func (l *listener) On(ev event.Event, hs ...event.Handler) Listener {
 	return l
 }
 
-func (l *listener) Run(channels ...interface{}) (err error) {
+func (l *listener) setConn(conn client.Conn) {
+	l.Lock()
+	l.conn = conn
+	l.Unlock()
+}
 
-	err = func() error {
+func (l *listener) Run(channels ...interface{}) error {
+
+	var (
+		err  error
+		dial func() (client.Conn, error)
+	)
+
+	dial, err = func() (func() (client.Conn, error), error) {
 		l.Lock()
 		defer l.Unlock()
 		if l.running {
-			return ErrListenerAlreadyRunning
+			return nil, ErrListenerAlreadyRunning
 		}
 		l.running = true
-		return nil
+		fn := l.dial
+		return fn, nil
 	}()
-	if err != nil {
-		return
-	}
 
 	defer func() {
 		// 斷線的話就重新設定 running = false
@@ -91,14 +100,18 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 		l.Trigger(event.Disconnected, rd)
 	}()
 
+	if err != nil {
+		return err
+	}
+
 	// 建立連線
 	l.Trigger(event.Connecting, nil)
-	conn, err := l.dial()
+	conn, err := dial()
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	l.conn = conn
+	l.setConn(conn)
 
 	// 登入名稱
 	if err := conn.Auth(client.Readable); err != nil {
@@ -152,8 +165,9 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 
 func (l *listener) WaitHandler() error {
 	l.RLock()
-	defer l.RUnlock()
-	if l.running {
+	running := l.running
+	l.RUnlock()
+	if running {
 		return l.conn.Unsubscribe(l.chs...)
 	}
 
@@ -165,9 +179,12 @@ func (l *listener) WaitHandler() error {
 func (l *listener) RunForever(quit chan os.Signal, reconnDuration time.Duration, chs ...interface{}) Listener {
 
 	go func() {
+		l.RLock()
+		conn := l.conn
+		l.RUnlock()
 		s := <-quit
-		if l.conn != nil {
-			l.conn.Close()
+		if conn != nil {
+			conn.Close()
 		}
 		quit <- s
 	}()
