@@ -68,19 +68,19 @@ func main() {
 		os.Exit(0)
 	}
 
-	dial := func() (client.Conn, error) {
-		return client.Dial(appName, listenAddr)
-	}
-
 	// launcher
-	la := launcher.New(client.NewPool(dial, 30))
+	la := launcher.New(client.NewPool(func() (client.Conn, error) {
+		return client.Dial("", listenAddr)
+	}, 30))
 	if ev := strings.SplitN(launcherEvent, ":", 2); len(ev) == 2 {
 		log.Println(la.Fire(event.Event(ev[0]), event.RawData(ev[1])))
 	}
 	defer la.Close()
 
 	// listener
-	li := listener.New(dial)
+	li := listener.New(func() (client.Conn, error) {
+		return client.Dial(appName, listenAddr)
+	})
 	args := cli.Args()
 	switch len(args) {
 	case 0:

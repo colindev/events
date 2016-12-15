@@ -53,6 +53,8 @@ func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 // Auth 執行登入紀錄
 func (h *Hub) auth(c Conn, p []byte) error {
 
+	// log.Printf("\033[31mauth %s(%s)\033[m\n", c.RemoteAddr(), c.GetName())
+
 	h.Lock()
 	defer h.Unlock()
 
