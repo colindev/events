@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
@@ -105,13 +106,15 @@ func (rds *Notifyer) Run(shutdown <-chan os.Signal, chs ...interface{}) error {
 		})
 	}
 
-	go rds.from.Run(chs...)
+	quit := make(chan bool, 1)
+	go rds.from.RunForever(quit, time.Second*3, chs...)
 
 	log.Printf("run: \033[32m%s\033[m -> \033[32m%s\033[m\n", rds.fromType, rds.toType)
 
 	<-shutdown
+	quit <- true
 	log.Printf("try stop listener(%s)\n", rds.fromType)
-	rds.from.Stop()
+	rds.from.WaitHandler()
 	log.Printf("try stop launcher(%s)\n", rds.toType)
 	return rds.to.Close()
 }

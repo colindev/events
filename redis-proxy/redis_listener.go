@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/colindev/events/event"
 	eventsListener "github.com/colindev/events/listener"
@@ -29,7 +30,7 @@ var (
 	ErrListenerNotRunning = errors.New("[events] Listener not running")
 )
 
-// New return Listener instansce
+// NewRedisListener return Listener instansce
 func NewRedisListener(pool *redis.Pool) eventsListener.Listener {
 	return &listener{
 		pool:   pool,
@@ -95,6 +96,30 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	}
 }
 
+func (l *listener) WaitHandler() error {
+	l.RLock()
+	defer l.RUnlock()
+	if l.running {
+		return l.psc.PUnsubscribe()
+	}
+
+	l.wg.Wait()
+
+	return nil
+}
+
+func (l *listener) RunForever(quit chan bool, reconn time.Duration, chs ...interface{}) eventsListener.Listener {
+	for {
+		select {
+		case <-quit:
+			return l
+		default:
+			l.Run(chs...)
+			time.Sleep(reconn)
+		}
+	}
+}
+
 func (l *listener) Trigger(ev event.Event, rd event.RawData) {
 
 	l.RLock()
@@ -144,16 +169,4 @@ func (l *listener) Ping(msg string) error {
 	}
 
 	return l.psc.Ping(msg)
-}
-
-func (l *listener) Stop() error {
-	l.RLock()
-	defer l.RUnlock()
-	if l.running {
-		return l.psc.PUnsubscribe()
-	}
-
-	l.wg.Wait()
-
-	return nil
 }

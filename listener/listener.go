@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
@@ -18,7 +19,8 @@ type (
 		Trigger(event.Event, event.RawData)
 		TriggerRecover(func(interface{}))
 		Run(channels ...interface{}) error
-		Stop() error
+		RunForever(chan bool, time.Duration, ...interface{}) Listener
+		WaitHandler() error
 		Ping(string) error
 	}
 
@@ -91,6 +93,13 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	defer conn.Close()
 	l.conn = conn
 
+	defer func() {
+		var rd event.RawData
+		if err != nil {
+			rd = event.RawData(err.Error())
+		}
+		l.Trigger(event.Disconnected, rd)
+	}()
 	// 登入名稱
 	if err := conn.Auth(client.Readable); err != nil {
 		return err
@@ -118,7 +127,8 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 
 	padding := len(l.chs)
 	for {
-		m, err := conn.Receive()
+		var m interface{}
+		m, err = conn.Receive()
 		if err != nil {
 			return err
 		}
@@ -137,7 +147,30 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 		default:
 			log.Printf("[event] unexpect %#v\n", m)
 		}
+	}
+}
 
+func (l *listener) WaitHandler() error {
+	l.RLock()
+	defer l.RUnlock()
+	if l.running {
+		return l.conn.Unsubscribe(l.chs...)
+	}
+
+	l.wg.Wait()
+
+	return nil
+}
+
+func (l *listener) RunForever(quit chan bool, reconnDuration time.Duration, chs ...interface{}) Listener {
+	for {
+		select {
+		case <-quit:
+			return l
+		default:
+			l.Run(chs...)
+			time.Sleep(reconnDuration)
+		}
 	}
 }
 
@@ -197,16 +230,4 @@ func (l *listener) Ping(msg string) error {
 	}
 
 	return l.conn.Ping(msg)
-}
-
-func (l *listener) Stop() error {
-	l.RLock()
-	defer l.RUnlock()
-	if l.running {
-		return l.conn.Unsubscribe(l.chs...)
-	}
-
-	l.wg.Wait()
-
-	return nil
 }

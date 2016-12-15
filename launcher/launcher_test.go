@@ -89,24 +89,37 @@ func TestForge(t *testing.T) {
 
 var benchData = event.RawData("")
 
-func BenchmarkFire(b *testing.B) {
+func delayConnPoolLauncher(delay time.Duration, i int) Launcher {
 
-	n := 0
 	pool := client.NewPool(func() (client.Conn, error) {
 		return &fake{fn: func(v ...interface{}) {
 			if v[0] == "Fire" {
-				n++
-				time.Sleep(time.Nanosecond * 50)
+				time.Sleep(delay)
 			}
 		}}, nil
 	}, 1)
-	pool.MaxActive(20)
-	l := New(pool)
+	pool.MaxActive(i)
+	return New(pool)
+}
 
+func BenchmarkFireConn20delay50nano(b *testing.B) {
+	delay := 50
+	active := 20
+	l := delayConnPoolLauncher(time.Nanosecond*time.Duration(delay), active)
 	for i := 0; i < b.N; i++ {
 		l.Fire("test.event", benchData)
 	}
 
 	l.Close()
-	//fmt.Printf("run %d, fire %d\n", b.N, n)
+}
+
+func BenchmarkFireConn50delay50nano(b *testing.B) {
+	delay := 50
+	active := 50
+	l := delayConnPoolLauncher(time.Nanosecond*time.Duration(delay), active)
+	for i := 0; i < b.N; i++ {
+		l.Fire("test.event", benchData)
+	}
+
+	l.Close()
 }
