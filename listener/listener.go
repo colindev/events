@@ -179,10 +179,10 @@ func (l *listener) WaitHandler() error {
 func (l *listener) RunForever(quit chan os.Signal, reconnDuration time.Duration, chs ...interface{}) Listener {
 
 	go func() {
+		s := <-quit
 		l.RLock()
 		conn := l.conn
 		l.RUnlock()
-		s := <-quit
 		if conn != nil {
 			conn.Close()
 		}
