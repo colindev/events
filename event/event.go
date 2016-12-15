@@ -9,6 +9,9 @@ const (
 	// PONG is event for redis ping/pong
 	PONG Event = "pong"
 
+	// Connecting 連線中
+	Connecting Event = "connecting"
+
 	// Connected 連線事件
 	Connected Event = "connected"
 

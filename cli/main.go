@@ -45,10 +45,12 @@ func main() {
 		recoverSince  int64
 		recoverUntil  int64
 		showVer       bool
+		verbose       bool
 
 		cli = flag.CommandLine
 	)
 
+	cli.BoolVar(&verbose, "V", false, "verbose")
 	cli.BoolVar(&showVer, "v", false, "version")
 	cli.StringVar(&appName, "app", "", "app name")
 	cli.StringVar(&listenAddr, "server", "127.0.0.1:6300", "listen event address")
@@ -58,6 +60,9 @@ func main() {
 	cli.Int64Var(&recoverUntil, "until", 0, "request recover until")
 	cli.Parse(os.Args[1:])
 
+	if verbose {
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+	}
 	if showVer {
 		fmt.Println(version)
 		os.Exit(0)
@@ -97,15 +102,16 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
-	err := li.On(event.Ready, func(ev event.Event, _ event.RawData) {
+	li.On(event.Ready, func(ev event.Event, _ event.RawData) {
 		log.Printf("recover since=%d until=%d\n", recoverSince, recoverUntil)
 		li.Recover(recoverSince, recoverUntil)
+	}).On(event.Connecting, func(ev event.Event, _ event.RawData) {
+		log.Println(ev)
+	}).On(event.Connected, func(ev event.Event, _ event.RawData) {
+		log.Println(ev)
+	}).On(event.Disconnected, func(ev event.Event, v event.RawData) {
+		log.Printf("%s: %s\n", ev, v)
 	}).RunForever(quit, time.Second*3, listenEvents...)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
 }
 
 func buildHandler(cmdName string, cmdArgs []string) event.Handler {

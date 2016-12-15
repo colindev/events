@@ -81,12 +81,18 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 		return
 	}
 
-	// 斷線的話就重新設定 running = false
 	defer func() {
+		// 斷線的話就重新設定 running = false
 		l.running = false
+		var rd event.RawData
+		if err != nil {
+			rd = event.RawData(err.Error())
+		}
+		l.Trigger(event.Disconnected, rd)
 	}()
 
 	// 建立連線
+	l.Trigger(event.Connecting, nil)
 	conn, err := l.dial()
 	if err != nil {
 		return err
@@ -94,13 +100,6 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	defer conn.Close()
 	l.conn = conn
 
-	defer func() {
-		var rd event.RawData
-		if err != nil {
-			rd = event.RawData(err.Error())
-		}
-		l.Trigger(event.Disconnected, rd)
-	}()
 	// 登入名稱
 	if err := conn.Auth(client.Readable); err != nil {
 		return err
@@ -164,6 +163,15 @@ func (l *listener) WaitHandler() error {
 }
 
 func (l *listener) RunForever(quit chan os.Signal, reconnDuration time.Duration, chs ...interface{}) Listener {
+
+	go func() {
+		s := <-quit
+		if l.conn != nil {
+			l.conn.Close()
+		}
+		quit <- s
+	}()
+
 	for {
 		select {
 		case <-quit:
