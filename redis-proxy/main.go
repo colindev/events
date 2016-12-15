@@ -90,7 +90,7 @@ type Notifyer struct {
 	to       Receiver
 }
 
-func (rds *Notifyer) Run(shutdown <-chan os.Signal, chs ...interface{}) error {
+func (rds *Notifyer) Run(shutdown chan os.Signal, chs ...interface{}) error {
 
 	if rds.from == nil {
 		return errors.New("請先指定發送端")
@@ -106,13 +106,8 @@ func (rds *Notifyer) Run(shutdown <-chan os.Signal, chs ...interface{}) error {
 		})
 	}
 
-	quit := make(chan bool, 1)
-	go rds.from.RunForever(quit, time.Second*3, chs...)
-
 	log.Printf("run: \033[32m%s\033[m -> \033[32m%s\033[m\n", rds.fromType, rds.toType)
-
-	<-shutdown
-	quit <- true
+	rds.from.RunForever(shutdown, time.Second*3, chs...)
 	log.Printf("try stop listener(%s)\n", rds.fromType)
 	rds.from.WaitHandler()
 	log.Printf("try stop launcher(%s)\n", rds.toType)

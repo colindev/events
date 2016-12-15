@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"math/rand"
 	"net"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -54,14 +56,14 @@ func TestListener_RunForever(t *testing.T) {
 
 	var (
 		trigged int
-		quit    = make(chan bool, 1)
+		quit    = make(chan os.Signal, 1)
 	)
 
 	dial := func() (client.Conn, error) {
 		t.Logf("disconn(%d) Dialing...", trigged)
 		if trigged >= 3 {
 			t.Log("dial signal quit")
-			quit <- true
+			quit <- syscall.SIGQUIT
 		}
 		return &fConn{r: bufio.NewReader(strings.NewReader(""))}, nil
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -108,7 +109,7 @@ func (l *listener) WaitHandler() error {
 	return nil
 }
 
-func (l *listener) RunForever(quit chan bool, reconn time.Duration, chs ...interface{}) eventsListener.Listener {
+func (l *listener) RunForever(quit chan os.Signal, reconn time.Duration, chs ...interface{}) eventsListener.Listener {
 	for {
 		select {
 		case <-quit:

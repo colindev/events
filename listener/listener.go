@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ type (
 		Trigger(event.Event, event.RawData)
 		TriggerRecover(func(interface{}))
 		Run(channels ...interface{}) error
-		RunForever(chan bool, time.Duration, ...interface{}) Listener
+		RunForever(chan os.Signal, time.Duration, ...interface{}) Listener
 		WaitHandler() error
 		Ping(string) error
 	}
@@ -162,7 +163,7 @@ func (l *listener) WaitHandler() error {
 	return nil
 }
 
-func (l *listener) RunForever(quit chan bool, reconnDuration time.Duration, chs ...interface{}) Listener {
+func (l *listener) RunForever(quit chan os.Signal, reconnDuration time.Duration, chs ...interface{}) Listener {
 	for {
 		select {
 		case <-quit:

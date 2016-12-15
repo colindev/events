@@ -6,7 +6,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
@@ -91,10 +94,13 @@ func main() {
 		li.On(event.Event(ev.(string)), handler)
 	}
 
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
 	err := li.On(event.Ready, func(ev event.Event, _ event.RawData) {
 		log.Printf("recover since=%d until=%d\n", recoverSince, recoverUntil)
 		li.Recover(recoverSince, recoverUntil)
-	}).Run(listenEvents...)
+	}).RunForever(quit, time.Second*3, listenEvents...)
 
 	if err != nil {
 		log.Fatal(err)
