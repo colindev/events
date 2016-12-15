@@ -76,8 +76,8 @@ func (h *Hub) auth(c Conn, p []byte) error {
 		return nil
 	}
 
-	if _, exists := h.m[name]; exists {
-		return fmt.Errorf("hub: duplicate auth name(%s)", name)
+	if c, exists := h.m[name]; exists {
+		return fmt.Errorf("hub: duplicate auth %s(%s)", c.RemoteAddr(), name)
 	}
 
 	c.SetName(name)
