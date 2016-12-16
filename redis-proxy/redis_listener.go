@@ -115,10 +115,12 @@ func (l *listener) RunForever(quit chan os.Signal, reconn time.Duration, chs ...
 	go func() {
 		s := <-quit
 		l.RLock()
-		psc := l.psc
+		conn := l.psc.Conn
 		l.RUnlock()
 
-		psc.Close()
+		if conn != nil {
+			conn.Close()
+		}
 
 		quit <- s
 
