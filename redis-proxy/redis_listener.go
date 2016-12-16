@@ -101,12 +101,6 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 }
 
 func (l *listener) WaitHandler() error {
-	l.RLock()
-	running := l.running
-	l.RUnlock()
-	if running {
-		return l.psc.PUnsubscribe()
-	}
 
 	l.wg.Wait()
 
@@ -116,33 +110,14 @@ func (l *listener) WaitHandler() error {
 func (l *listener) RunForever(quit chan os.Signal, reconn time.Duration, chs ...interface{}) eventsListener.Listener {
 
 	go func() {
-		s := <-quit
-		l.RLock()
-		pool := l.pool
-		psc := l.psc
-		l.RUnlock()
-
-		quit <- s
-
-		if pool != nil {
-			pool.Close()
-		}
-
-		if psc.Conn != nil {
-			psc.Conn.Close()
-		}
-
-	}()
-
-	for {
-		select {
-		case <-quit:
-			return l
-		default:
+		for {
 			l.Run(chs...)
 			time.Sleep(reconn)
 		}
-	}
+	}()
+
+	<-quit
+	return l
 }
 
 func (l *listener) Trigger(ev event.Event, rd event.RawData) {
