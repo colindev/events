@@ -20,11 +20,15 @@ import (
 
 // Hub 負責管理連線
 type Hub struct {
+	// 連線鎖
 	sync.RWMutex
 	// 需作歷程管理
 	m map[string]Conn
 	// 不須作歷程管理
-	g     map[Conn]bool
+	g map[Conn]bool
+	// 等待連線全部退出用
+	sync.WaitGroup
+
 	store *store.Store
 	*log.Logger
 }
@@ -110,8 +114,10 @@ func (h *Hub) auth(c Conn, p []byte) error {
 func (h *Hub) quit(c Conn, t time.Time) (auth *store.Auth) {
 	var err error
 	h.Lock()
-	defer h.Unlock()
-	defer c.Close(err)
+	defer func() {
+		h.Unlock()
+		c.Close(err)
+	}()
 	auth = c.GetAuth()
 	auth.DisconnectedAt = t.Unix()
 
@@ -210,8 +216,10 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 
 func (h *Hub) handle(c Conn) {
 
+	h.Add(1)
 	defer func() {
 		h.quit(c, time.Now())
+		h.Done()
 		if err := c.Err(); err != nil {
 			h.Println("conn error:", err)
 		}
@@ -363,6 +371,7 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string, others ...Conn)
 	h.Println("h.quitAll")
 	err = listener.Close()
 	h.Println("close listener")
+	h.Wait()
 	h.store.Close()
 	h.Println("close store")
 
