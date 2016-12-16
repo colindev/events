@@ -40,12 +40,18 @@ func main() {
 		flow    string
 		chs     = channels{}
 		showVer bool
+		verbose bool
 	)
 
+	flag.BoolVar(&verbose, "V", false, "verbose")
 	flag.BoolVar(&showVer, "v", false, "version")
 	flag.StringVar(&flow, "flow", "redis://127.0.0.1:6379|events://127.0.0.1:6300", "event flow")
 	flag.Var(&chs, "event", "subscribe events")
 	flag.Parse()
+
+	if verbose {
+		log.SetFlags(log.Lshortfile | log.LstdFlags)
+	}
 
 	if showVer {
 		fmt.Println("redis-proxy: ", version)

@@ -78,7 +78,10 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	conn := l.pool.Get()
 	defer conn.Close()
 	l.psc.Conn = conn
-	l.psc.PSubscribe(channels...)
+	err = l.psc.PSubscribe(channels...)
+	if err != nil {
+		return
+	}
 
 	for {
 		m := l.psc.Receive()
@@ -116,13 +119,18 @@ func (l *listener) RunForever(quit chan os.Signal, reconn time.Duration, chs ...
 		s := <-quit
 		l.RLock()
 		pool := l.pool
+		psc := l.psc
 		l.RUnlock()
+
+		quit <- s
 
 		if pool != nil {
 			pool.Close()
 		}
 
-		quit <- s
+		if psc.Conn != nil {
+			psc.Conn.Close()
+		}
 
 	}()
 
