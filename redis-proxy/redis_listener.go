@@ -99,8 +99,9 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 
 func (l *listener) WaitHandler() error {
 	l.RLock()
-	defer l.RUnlock()
-	if l.running {
+	running := l.running
+	l.RUnlock()
+	if running {
 		return l.psc.PUnsubscribe()
 	}
 
@@ -110,6 +111,19 @@ func (l *listener) WaitHandler() error {
 }
 
 func (l *listener) RunForever(quit chan os.Signal, reconn time.Duration, chs ...interface{}) eventsListener.Listener {
+
+	go func() {
+		s := <-quit
+		l.RLock()
+		psc := l.psc
+		l.RUnlock()
+
+		psc.Close()
+
+		quit <- s
+
+	}()
+
 	for {
 		select {
 		case <-quit:
