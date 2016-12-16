@@ -145,25 +145,28 @@ func (h *Hub) quitAll(t time.Time) {
 }
 
 func (h *Hub) publish(e *store.Event) int {
-	h.RLock()
-	defer h.RUnlock()
 
-	h.Println("publish: ", e.Raw)
-	var cnt int
-	for name, c := range h.m {
+	h.RLock()
+	var conns = []Conn{}
+	for _, c := range h.m {
 		if c.IsListening(e.Name) {
-			cnt++
-			h.Printf("receiver: %s(%s)", c.RemoteAddr(), name)
-			go c.SendEvent(e.Raw)
+			conns = append(conns, c)
 		}
 	}
 
 	for c := range h.g {
 		if c.IsListening(e.Name) {
-			cnt++
-			h.Println("receiver: ", c.RemoteAddr())
-			go c.SendEvent(e.Raw)
+			conns = append(conns, c)
 		}
+	}
+	h.RUnlock()
+
+	h.Println("publish: ", e.Raw)
+	var cnt int
+	for _, c := range conns {
+		cnt++
+		h.Printf("send to: %s(%s)", c.RemoteAddr(), c.GetName())
+		go c.SendEvent(e.Raw)
 	}
 
 	return cnt
