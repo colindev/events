@@ -1,6 +1,10 @@
 package event
 
-import "encoding/json"
+import (
+	"bytes"
+	"compress/gzip"
+	"io"
+)
 
 type (
 	// RawData convert []byte from subscription
@@ -16,23 +20,42 @@ func (rd RawData) Bytes() []byte {
 	return []byte(rd)
 }
 
-// Marshal value to RawData
-func Marshal(v interface{}) (RawData, error) {
-	switch v := v.(type) {
-	case string:
-		return RawData([]byte(v)), nil
-	case []byte:
-		return RawData(v), nil
+// Compress raw data
+func Compress(v RawData) (RawData, error) {
+
+	var (
+		err error
+		buf bytes.Buffer
+		zpw = gzip.NewWriter(&buf)
+	)
+
+	_, err = zpw.Write(v.Bytes())
+	if err != nil {
+		return nil, err
 	}
-	b, err := json.Marshal(v)
+	err = zpw.Flush()
 	if err != nil {
 		return nil, err
 	}
 
-	return RawData(b), nil
+	return RawData(buf.Bytes()), nil
 }
 
-// Unmarshal RawData to value
-func Unmarshal(rd RawData, v interface{}) error {
-	return json.Unmarshal(rd.Bytes(), v)
+// Uncompress compressed data
+func Uncompress(rd RawData) (RawData, error) {
+
+	var (
+		err error
+		buf = bytes.NewBuffer(rd.Bytes())
+		ret bytes.Buffer
+	)
+
+	zpr, err := gzip.NewReader(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	io.Copy(&ret, zpr)
+
+	return RawData(ret.Bytes()), nil
 }
