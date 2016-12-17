@@ -18,12 +18,7 @@ type (
 	launcher struct {
 		wg   sync.WaitGroup
 		pool client.Pool
-		c    chan *cache
-	}
-
-	cache struct {
-		event.Event
-		event.RawData
+		c    chan *client.Event
 	}
 )
 
@@ -31,7 +26,7 @@ type (
 func New(pool client.Pool) Launcher {
 	l := &launcher{
 		pool: pool,
-		c:    make(chan *cache, 100),
+		c:    make(chan *client.Event, 100),
 	}
 
 	l.wg.Add(1)
@@ -42,9 +37,13 @@ func New(pool client.Pool) Launcher {
 
 func (l *launcher) Fire(ev event.Event, rd event.RawData) (err error) {
 
-	l.c <- &cache{
-		Event:   ev,
-		RawData: rd,
+	data, err := event.Compress(rd)
+	if err != nil {
+		return
+	}
+	l.c <- &client.Event{
+		Name: ev,
+		Data: data,
 	}
 
 	return nil
@@ -56,7 +55,7 @@ func (l *launcher) reduce(du time.Duration) {
 	conn.Auth(client.Writable)
 	for ca := range l.c {
 		for {
-			if err := conn.Fire(ca.Event, ca.RawData); err == nil {
+			if err := conn.Fire(ca.Name, ca.Data); err == nil {
 				break
 			}
 			conn.Close()

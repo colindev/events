@@ -20,6 +20,9 @@ const (
 
 	// Ready 登入 註冊頻道 等處理完畢
 	Ready Event = "ready"
+
+	// Error event
+	Error Event = "error"
 )
 
 type (
