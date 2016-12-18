@@ -73,7 +73,10 @@ func main() {
 		return client.Dial("", listenAddr)
 	}, 30))
 	if ev := strings.SplitN(launcherEvent, ":", 2); len(ev) == 2 {
-		log.Println(la.Fire(event.Event(ev[0]), event.RawData(ev[1])))
+		err := la.Fire(event.Event(ev[0]), event.RawData(ev[1]))
+		if verbose {
+			log.Printf("fire: %v error(%v)\n", ev, err)
+		}
 	}
 	defer la.Close()
 
@@ -103,13 +106,17 @@ func main() {
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
 	li.On(event.Ready, func(ev event.Event, _ event.RawData) {
+		// Recover
 		log.Printf("recover since=%d until=%d\n", recoverSince, recoverUntil)
 		li.Recover(recoverSince, recoverUntil)
 	}).On(event.Connecting, func(ev event.Event, _ event.RawData) {
+		// Connecting
 		log.Println(ev)
 	}).On(event.Connected, func(ev event.Event, _ event.RawData) {
+		// Connected
 		log.Println(ev)
 	}).On(event.Disconnected, func(ev event.Event, v event.RawData) {
+		// Disconnected
 		log.Printf("%s: %s\n", ev, v)
 	}).RunForever(quit, time.Second*3, listenEvents...)
 }
