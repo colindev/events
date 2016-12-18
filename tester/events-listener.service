@@ -7,7 +7,7 @@ ExecStart=/bin/bash -c '{PWD}/listener/listener >> {PWD}/listener.log &'
 ExecStop=/bin/kill -s QUIT $MAINPID
 
 Restart=always
-RestartSec=20s
+RestartSec=20
 RemainAfterExit=true
 
 [Install]
