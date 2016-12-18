@@ -3,7 +3,7 @@ Discription=test launcher
 
 [Service]
 
-ExecStart=/bin/bash -c '{PWD}/launcher/launcher &'
+ExecStart=/bin/bash -c '{PWD}/launcher/launcher >> {PWD}/launcher.log &'
 ExecStop=/bin/kill -s QUIT $MAINPID
 
 RestartSec=20s

@@ -3,7 +3,7 @@ Discription=test listener
 
 [Service]
 
-ExecStart=/bin/bash -c '{PWD}/listener/listener &'
+ExecStart=/bin/bash -c '{PWD}/listener/listener >> {PWD}/listener.log &'
 ExecStop=/bin/kill -s QUIT $MAINPID
 
 RestartSec=20s
