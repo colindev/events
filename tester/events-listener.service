@@ -6,6 +6,7 @@ Discription=test listener
 ExecStart=/bin/bash -c '{PWD}/listener/listener >> {PWD}/listener.log &'
 ExecStop=/bin/kill -s QUIT $MAINPID
 
+Restart=always
 RestartSec=20s
 RemainAfterExit=true
 
