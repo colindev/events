@@ -48,6 +48,15 @@ uninstall-launcher:
 	rm /lib/systemd/system/events-launcher.service
 	systemctl daemon-reload
 
+stop:
+	systemctl stop events-launcher events-listener events-server
+
+start:
+	systemctl start events-launcher events-listener events-server
+
+status:
+	systemctl status events-launcher events-listener events-server
+
 run-server:
 	./server/server -env ../server/conf/.env
 
