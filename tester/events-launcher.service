@@ -1,0 +1,13 @@
+[Unit]
+Discription=test launcher
+
+[Service]
+
+ExecStart=/bin/bash -c '{PWD}/launcher/launcher &'
+ExecStop=/bin/kill -s QUIT $MAINPID
+
+RestartSec=20s
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

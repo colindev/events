@@ -1,0 +1,13 @@
+[Unit]
+Discription=test server
+
+[Service]
+
+ExecStart=/bin/bash -c '{PWD}/server/server -env {PWD}/../server/conf/.env &'
+ExecStop=/bin/kill -s QUIT $MAINPID
+
+RestartSec=20s
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

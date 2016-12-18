@@ -1,0 +1,13 @@
+[Unit]
+Discription=test listener
+
+[Service]
+
+ExecStart=/bin/bash -c '{PWD}/listener/listener &'
+ExecStop=/bin/kill -s QUIT $MAINPID
+
+RestartSec=20s
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
