@@ -1,4 +1,5 @@
 PWD ?= `pwd`
+RUNUSER := $(RUNUSER)
 
 all: server/server listener/listener launcher/launcher 
 
@@ -14,21 +15,21 @@ server/server: ../server/*.go
 install: install-server install-listener install-launcher
 
 install-server:
-	cat ./events-server.service | sed 's@{PWD}@'$(PWD)'@g' > /lib/systemd/system/events-server.service
+	cat ./events-server.service | sed 's@{PWD}@'$(PWD)'@g' | sed 's/{USER}/'$(RUNUSER)'/g' > /lib/systemd/system/events-server.service
 	systemctl daemon-reload
 	systemctl enable events-server
 	systemctl start events-server
 	systemctl status events-server
 
 install-listener:
-	cat ./events-listener.service | sed 's@{PWD}@'$(PWD)'@g' > /lib/systemd/system/events-listener.service
+	cat ./events-listener.service | sed 's@{PWD}@'$(PWD)'@g' | sed 's/{USER}/'$(RUNUSER)'/g' > /lib/systemd/system/events-listener.service
 	systemctl daemon-reload
 	systemctl enable events-listener
 	systemctl start events-listener
 	systemctl status events-listener
 
 install-launcher:
-	cat ./events-launcher.service | sed 's@{PWD}@'$(PWD)'@g' > /lib/systemd/system/events-launcher.service
+	cat ./events-launcher.service | sed 's@{PWD}@'$(PWD)'@g' | sed 's/{USER}/'$(RUNUSER)'/g' > /lib/systemd/system/events-launcher.service
 	systemctl daemon-reload
 	systemctl enable events-launcher
 	systemctl start events-launcher
@@ -59,6 +60,10 @@ start:
 
 status:
 	systemctl status events-launcher events-listener events-server
+
+clean:
+	echo '' > listener.log
+	echo '' > launcher.log
 
 run-server:
 	./server/server -env ../server/conf/.env

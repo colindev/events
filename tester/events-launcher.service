@@ -1,14 +1,17 @@
 [Unit]
-Discription=test launcher
+Description=test launcher
+After=network.target
 
 [Service]
+Type=forking
+User={USER}
 
 ExecStart=/bin/bash -c '{PWD}/launcher/launcher >> {PWD}/launcher.log &'
 ExecStop=/bin/kill -s QUIT $MAINPID
 
 Restart=always
-RestartSec=20
-RemainAfterExit=true
+RestartSec=20s
+RemainBeforeExit=true
 
 [Install]
 WantedBy=multi-user.target
