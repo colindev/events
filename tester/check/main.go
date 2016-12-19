@@ -11,19 +11,21 @@ import (
 
 type Line struct {
 	raw    string
+	cnt    int
 	prefix string
-	exists bool
 	next   *Line
 }
 
 func (l *Line) String() string {
 
 	ret := fmt.Sprintf("%s %s", l.prefix, l.raw)
-	if l.exists {
+	switch l.cnt {
+	case 0:
+		return fmt.Sprintf("\033[31m%s\033[m", ret)
+	case 1:
 		return fmt.Sprintf("\033[32m%s\033[m", ret)
 	}
-
-	return fmt.Sprintf("\033[31m%s\033[m", ret)
+	return fmt.Sprintf("\033[35m%s\033[m", ret)
 }
 
 func main() {
@@ -124,7 +126,7 @@ func main() {
 		if l, exists := cache[s]; !exists {
 			notInFire = append(notInFire, s)
 		} else {
-			l.exists = true
+			l.cnt++
 			l.prefix = statusPrefix
 		}
 	}
@@ -133,12 +135,18 @@ func main() {
 	fmt.Printf("[rece]: %d \033[32mstart:\033[m %s \033[32mend:\033[m %s\n", cntListener, startListen, endListen)
 	cntMiss := 0
 	L := startLine
+	prevPrefix := ""
 	for {
 		if L == nil {
 			break
 		}
+		if L.prefix == "" {
+			L.prefix = prevPrefix
+		} else {
+			prevPrefix = L.prefix
+		}
 		fmt.Println(L.String())
-		if !L.exists {
+		if L.cnt == 0 {
 			cntMiss++
 		}
 		L = L.next

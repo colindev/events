@@ -1,6 +1,7 @@
 [Unit]
 Description=test launcher
 After=network.target
+Wants=events-server.service
 
 [Service]
 Type=forking
