@@ -32,6 +32,7 @@ func main() {
 			n := rand.Intn(3)
 			log.Println("rand: ", n)
 			if n == 1 {
+				fmt.Println("=crash")
 				log.Println("\033[31m================= test crash ================\033[m")
 				panic(fmt.Sprintf("test panic %s", now))
 			}
@@ -42,10 +43,13 @@ func main() {
 	}()
 
 	l.On(event.Ready, func(ev event.Event, v event.RawData) {
+		fmt.Println("=ready")
 		l.Recover(0, 0)
 	}).On(event.Connected, func(ev event.Event, v event.RawData) {
+		fmt.Println("=connected")
 		log.Println(ev)
 	}).On(event.Disconnected, func(ev event.Event, v event.RawData) {
+		fmt.Println("=disconnected")
 		log.Println(ev, v.String())
 	}).On(eventName, func(ev event.Event, v event.RawData) {
 		fmt.Println(ev, v.String())

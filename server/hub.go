@@ -105,8 +105,7 @@ func (h *Hub) auth(c Conn, p []byte) error {
 	c.SetLastAuth(auth)
 	h.Printf("[hub] %s last: %+v\n", name, auth)
 	nowAuth := c.GetAuth()
-	h.Printf("[hub] %s auth: %+v\n", name, nowAuth)
-
+	h.Printf("[hub] %s auth: %v\n", name, nowAuth)
 	return h.store.NewAuth(nowAuth)
 }
 
@@ -204,14 +203,23 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 
 	h.Printf("recover: %s(%s) since=%d until=%d channels=%v\n", c.RemoteAddr(), c.GetName(), since, until, chs)
 
-	// 回傳其他值是為了測試用
-	return h.store.EachEvents(func(e *store.Event) {
+	err := h.store.EachEvents(func(e *store.Event) {
 		if c.IsListening(e.Name) {
 			// 先不浪費I/O了
 			// h.Printf("resend %s: %+v\n", c.GetName(), e)
 			c.SendEvent(e.Raw)
 		}
 	}, prefix, since, until)
+
+	if err != nil {
+		return err
+	}
+
+	auth := c.GetAuth()
+	auth.RecoverSince = since
+	auth.RecoverUntil = until
+
+	return h.store.UpdateAuth(auth)
 }
 
 func (h *Hub) handle(c Conn) {
@@ -397,4 +405,26 @@ func makeEvent(ev, data []byte, t time.Time) *store.Event {
 		Raw:        string(p),
 		ReceivedAt: t.Unix(),
 	}
+}
+
+func min(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+
+	return b
+}
+
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+
+	return b
+}
+
+func isBetween(a, b, c int64) bool {
+	n, m := min(b, c), max(b, c)
+
+	return a >= n && a <= m
 }

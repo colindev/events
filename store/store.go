@@ -123,6 +123,13 @@ func (s *Store) GetLast(name string) (*Auth, error) {
 	if err := s.auth.Where(auth).Order("disconnected_at DESC").Limit(1).FirstOrInit(&auth).Error; err != nil {
 		return nil, err
 	}
+	s.EachAuth(func(au *Auth) bool {
+		auth = *au
+		if auth.RecoverSince > 0 {
+			return false
+		}
+		return true
+	}, name)
 
 	return &auth, nil
 }
@@ -140,6 +147,29 @@ func (s *Store) UpdateAuth(auth *Auth) error {
 		"name":         auth.Name,
 		"connected_at": auth.ConnectedAt,
 	}).Update(auth).Error
+}
+
+func (s *Store) EachAuth(f func(*Auth) bool, name string) error {
+	offset := 0
+	limit := 10
+
+	db := s.auth.Where("name = ?", name).Limit(limit).Order("connected_at DESC")
+	for {
+		var list []*Auth
+		ret := db.Offset(offset).Find(&list)
+		if ret.Error != nil {
+			return ret.Error
+		}
+		for _, au := range list {
+			if !f(au) {
+				return nil
+			}
+		}
+		if len(list) < limit {
+			return nil
+		}
+		offset += limit
+	}
 }
 
 func (s *Store) newEvent(ev *Event) error {
@@ -192,6 +222,8 @@ type Auth struct {
 	IP             string `gorm:"column:ip;size:30"`
 	ConnectedAt    int64  `gorm:"column:connected_at"`
 	DisconnectedAt int64  `gorm:"column:disconnected_at"`
+	RecoverSince   int64  `gorm:"column:recover_since"`
+	RecoverUntil   int64  `gorm:"column:recover_until"`
 }
 
 // TableName ...

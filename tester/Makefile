@@ -1,7 +1,7 @@
 PWD ?= `pwd`
 RUNUSER := $(RUNUSER)
 
-all: server/server listener/listener launcher/launcher 
+all: server/server listener/listener launcher/launcher check/checker 
 
 listener/listener: listener/main.go
 	go build -o listener/listener ./listener/
@@ -11,6 +11,9 @@ launcher/launcher: launcher/main.go
 
 server/server: ../server/*.go
 	go build -ldflags "-X main.version=test-server" -o server/server ../server
+
+check/checker: check/main.go
+	go build -o check/checker ./check/
 
 install: install-server install-listener install-launcher
 
@@ -56,7 +59,7 @@ stop:
 	systemctl stop events-launcher events-listener events-server
 
 start:
-	systemctl start events-launcher events-listener events-server
+	systemctl start events-server events-listener events-launcher
 
 status:
 	systemctl status events-launcher events-listener events-server

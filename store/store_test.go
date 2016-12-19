@@ -64,7 +64,7 @@ func TestEvent(t *testing.T) {
 		s.Events <- ev
 	}
 
-	go func() {
+	func() {
 
 		var expect []Event
 
