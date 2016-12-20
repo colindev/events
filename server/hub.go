@@ -212,15 +212,14 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 		return nil
 	}, prefix, since, until)
 
-	if err != nil {
-		return err
+	if err == nil && c.GetName() != "" {
+		auth := c.GetAuth()
+		auth.RecoverSince = since
+		auth.RecoverUntil = until
+		return h.store.UpdateAuth(auth)
 	}
 
-	auth := c.GetAuth()
-	auth.RecoverSince = since
-	auth.RecoverUntil = until
-
-	return h.store.UpdateAuth(auth)
+	return err
 }
 
 func (h *Hub) handle(c Conn) {
