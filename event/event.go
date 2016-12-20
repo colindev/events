@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	// PONG is event for redis ping/pong
+	// PONG is event for conn ping/pong
 	PONG Event = "pong"
 
 	// Connecting 連線中
