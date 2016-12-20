@@ -134,6 +134,7 @@ func main() {
 	fmt.Printf("[fire]: %d \033[32mstart:\033[m %s \033[32mend:\033[m %s\n", cntLauncher, startLine, endLine)
 	fmt.Printf("[rece]: %d \033[32mstart:\033[m %s \033[32mend:\033[m %s\n", cntListener, startListen, endListen)
 	cntMiss := 0
+	cntDup := 0
 	L := startLine
 	prevPrefix := ""
 	for {
@@ -148,10 +149,13 @@ func main() {
 		fmt.Println(L.String())
 		if L.cnt == 0 {
 			cntMiss++
+		} else if L.cnt > 1 {
+			cntDup++
 		}
 		L = L.next
 	}
-	fmt.Println("miss: ", cntMiss)
+
+	fmt.Printf("miss: %d duplicate: %d\n", cntMiss, cntDup)
 
 	fmt.Println("not in fire:")
 	for _, s := range notInFire {
