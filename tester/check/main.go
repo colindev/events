@@ -21,11 +21,11 @@ func (l *Line) String() string {
 	ret := fmt.Sprintf("%s %s", l.prefix, l.raw)
 	switch l.cnt {
 	case 0:
-		return fmt.Sprintf("\033[31m%s\033[m", ret)
+		return fmt.Sprintf("\033[31m%s (%d)\033[m", ret, l.cnt)
 	case 1:
-		return fmt.Sprintf("\033[32m%s\033[m", ret)
+		return fmt.Sprintf("\033[32m%s (%d)\033[m", ret, l.cnt)
 	}
-	return fmt.Sprintf("\033[35m%s\033[m", ret)
+	return fmt.Sprintf("\033[35m%s (%d)\033[m", ret, l.cnt)
 }
 
 func main() {

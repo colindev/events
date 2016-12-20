@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"container/list"
 	"sync"
 	"time"
 
@@ -30,7 +31,7 @@ func New(pool client.Pool) Launcher {
 	}
 
 	l.wg.Add(1)
-	go l.reduce(time.Millisecond * 300)
+	go l.reduce(5, time.Millisecond*300)
 
 	return l
 }
@@ -50,18 +51,36 @@ func (l *launcher) Fire(ev event.Event, rd event.RawData) (err error) {
 }
 
 // Run try resent
-func (l *launcher) reduce(du time.Duration) {
+func (l *launcher) reduce(keep int, du time.Duration) {
 	conn := l.pool.Get()
 	conn.Auth(client.Writable)
+	// 保留最後 n 筆資料
+	cache := list.New()
 	for ca := range l.c {
+		cache.PushBack(ca)
+		for cache.Len() > keep {
+			cache.Remove(cache.Front())
+		}
 		for {
 			if err := conn.Fire(ca.Name, ca.Data); err == nil {
 				break
 			}
 			conn.Close()
-			time.Sleep(du)
 			conn = l.pool.Get()
-			conn.Auth(client.Writable)
+			if err := conn.Auth(client.Writable); err != nil {
+				time.Sleep(du)
+			} else {
+				// 每次斷線後重新連上,延遲一段時間才重送資料
+				time.Sleep(time.Second * 10)
+
+				// 重送斷線前 n 筆資料
+				el := cache.Front()
+				for el != nil {
+					pack := el.Value.(*client.Event)
+					conn.Fire(pack.Name, pack.Data)
+					el = el.Next()
+				}
+			}
 		}
 	}
 

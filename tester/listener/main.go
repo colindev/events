@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -16,6 +17,9 @@ import (
 
 func main() {
 
+	crash := flag.Int("crash", 10, "if rand n return 1, then panic")
+	flag.Parse()
+
 	eventName := event.Event("test.event")
 
 	l := listener.New(func() (client.Conn, error) {
@@ -26,10 +30,13 @@ func main() {
 	signal.Notify(quit, syscall.SIGQUIT)
 
 	go func() {
+		if *crash == 0 {
+			return
+		}
 		for {
 			now := time.Now()
 			rand.Seed(int64(now.Nanosecond()))
-			n := rand.Intn(3)
+			n := rand.Intn(*crash)
 			log.Println("rand: ", n)
 			if n == 1 {
 				fmt.Println("=crash")

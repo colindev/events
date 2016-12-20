@@ -166,7 +166,9 @@ func (h *Hub) publish(e *store.Event) int {
 	}
 	h.RUnlock()
 
-	h.Println("publish: ", e.Raw)
+	eventName, eventData, err := parseEvent([]byte(e.Raw))
+	rd, err := event.Uncompress(eventData)
+	h.Println("publish:", string(eventName), rd, err)
 	var cnt int
 	for _, c := range conns {
 		cnt++
@@ -326,13 +328,11 @@ func (h *Hub) handle(c Conn) {
 			}
 
 			eventName, eventData, err := parseEvent(p)
-			h.Println("receive:", string(eventName), string(eventData), err)
+			s, _ := event.Uncompress(eventData)
+			h.Println("receive:", string(eventName), string(s), err)
 			if err == nil {
 				storeEvent := makeEvent(eventName, eventData, time.Now())
-				go func() {
-					// 排隊寫入
-					h.store.Events <- storeEvent
-				}()
+				h.store.Events <- storeEvent
 				h.publish(storeEvent)
 			} else {
 				c.SendError(err)
