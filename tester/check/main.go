@@ -139,8 +139,6 @@ func main() {
 		}
 	}
 
-	fmt.Printf("[fire]: %d \033[32mstart:\033[m %s \033[32mend:\033[m %s\n", cntLauncher, startLine, endLine)
-	fmt.Printf("[rece]: %d \033[32mstart:\033[m %s \033[32mend:\033[m %s\n", cntListener, startListen, endListen)
 	cntMiss := 0
 	cntDup := 0
 	L := startLine
@@ -165,6 +163,8 @@ func main() {
 
 	fmt.Printf("miss: %d duplicate: %d crashed: %d recover: %d connected: %d disconnected: %d\n",
 		cntMiss, cntDup, cntCrashed, cntRecover, cntConnected, cntDisconnected)
+	fmt.Printf("[fire]: %d \033[32mstart:\033[m %s \033[32mend:\033[m %s\n", cntLauncher, startLine, endLine)
+	fmt.Printf("[rece]: %d \033[32mstart:\033[m %s \033[32mend:\033[m %s\n", cntListener, startListen, endListen)
 
 	fmt.Println("not in fire:")
 	for _, s := range notInFire {
