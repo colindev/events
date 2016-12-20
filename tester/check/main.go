@@ -86,6 +86,10 @@ func main() {
 	notInFire := []string{}
 	bufListener := bufio.NewReader(fListener)
 	cntListener := 0
+	cntCrashed := 0
+	cntRecover := 0
+	cntConnected := 0
+	cntDisconnected := 0
 	var startListen, endListen string
 	statusPrefix := " "
 	for {
@@ -99,12 +103,16 @@ func main() {
 				break
 			case "crash":
 				statusPrefix = "x"
+				cntCrashed++
 			case "ready":
 				statusPrefix = "o"
+				cntRecover++
 			case "connected":
 				statusPrefix = "|"
+				cntConnected++
 			case "disconnected":
 				statusPrefix = "-"
+				cntDisconnected++
 			default:
 				statusPrefix = "?"
 			}
@@ -155,7 +163,8 @@ func main() {
 		L = L.next
 	}
 
-	fmt.Printf("miss: %d duplicate: %d\n", cntMiss, cntDup)
+	fmt.Printf("miss: %d duplicate: %d crashed: %d recover: %d connected: %d disconnected: %d\n",
+		cntMiss, cntDup, cntCrashed, cntRecover, cntConnected, cntDisconnected)
 
 	fmt.Println("not in fire:")
 	for _, s := range notInFire {
