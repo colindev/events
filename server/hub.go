@@ -203,12 +203,13 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 
 	h.Printf("recover: %s(%s) since=%d until=%d channels=%v\n", c.RemoteAddr(), c.GetName(), since, until, chs)
 
-	err := h.store.EachEvents(func(e *store.Event) {
+	err := h.store.EachEvents(func(e *store.Event) error {
 		if c.IsListening(e.Name) {
 			// 先不浪費I/O了
 			// h.Printf("resend %s: %+v\n", c.GetName(), e)
-			c.SendEvent(e.Raw)
+			return c.SendEvent(e.Raw)
 		}
+		return nil
 	}, prefix, since, until)
 
 	if err != nil {

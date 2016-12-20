@@ -176,7 +176,7 @@ func (s *Store) newEvent(ev *Event) error {
 	return s.events.Create(ev).Error
 }
 
-func (s *Store) EachEvents(f func(*Event), prefix []string, since, until int64) error {
+func (s *Store) EachEvents(f func(*Event) error, prefix []string, since, until int64) error {
 
 	offset := 0
 	limit := 100
@@ -196,6 +196,7 @@ func (s *Store) EachEvents(f func(*Event), prefix []string, since, until int64) 
 		}
 	}()
 
+	var err error
 	for {
 		var list []*Event
 		ret := db.Offset(offset).Find(&list)
@@ -204,7 +205,9 @@ func (s *Store) EachEvents(f func(*Event), prefix []string, since, until int64) 
 		}
 
 		for _, ev := range list {
-			f(ev)
+			if err = f(ev); err != nil {
+				break
+			}
 		}
 
 		if len(list) < limit {
@@ -213,7 +216,7 @@ func (s *Store) EachEvents(f func(*Event), prefix []string, since, until int64) 
 		offset += limit
 	}
 
-	return nil
+	return err
 }
 
 // Auth table struct

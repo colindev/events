@@ -75,7 +75,7 @@ func TestEvent(t *testing.T) {
 		}
 
 		i := 0
-		err = s.EachEvents(func(ev *Event) {
+		err = s.EachEvents(func(ev *Event) error {
 
 			time.Sleep(time.Millisecond * 50)
 
@@ -83,6 +83,8 @@ func TestEvent(t *testing.T) {
 				t.Errorf("expect %d Hash=%s, but %s", i, expect[i].Hash, ev.Hash)
 			}
 			i++
+
+			return nil
 		}, nil, 2, 0)
 		if err != nil {
 			t.Error("EachEvents error: ", err)
@@ -94,7 +96,7 @@ func TestEvent(t *testing.T) {
 		}
 
 		i = 0
-		err = s.EachEvents(func(ev *Event) {
+		err = s.EachEvents(func(ev *Event) error {
 
 			time.Sleep(time.Millisecond * 50)
 
@@ -102,6 +104,8 @@ func TestEvent(t *testing.T) {
 				t.Errorf("expect %d Hash=%s, but %s", i, expect[i].Hash, ev.Hash)
 			}
 			i++
+
+			return nil
 		}, []string{"yy"}, 1, 0)
 		if err != nil {
 			t.Error("EachEvents error: ", err)
