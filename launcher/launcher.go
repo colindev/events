@@ -38,13 +38,9 @@ func New(pool client.Pool) Launcher {
 
 func (l *launcher) Fire(ev event.Event, rd event.RawData) (err error) {
 
-	data, err := event.Compress(rd)
-	if err != nil {
-		return
-	}
 	l.c <- &client.Event{
 		Name: ev,
-		Data: data,
+		Data: rd,
 	}
 
 	return nil

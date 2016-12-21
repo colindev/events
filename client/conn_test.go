@@ -169,7 +169,12 @@ var (
 
 func TestConn_ReceiveEvent(t *testing.T) {
 
-	eventText := fmt.Sprintf(`%s:%s`, eventName, eventData)
+	b, err := event.Compress(eventData)
+	if err != nil {
+		t.Error(err)
+		t.Skip("compress fail")
+	}
+	eventText := fmt.Sprintf(`%s:%s`, eventName, b)
 	eventStream := fmt.Sprintf(`=%d%s%s%s`, len(eventText), "\r\n", eventText, "\r\n")
 
 	c := createConn(eventStream)
@@ -181,16 +186,16 @@ func TestConn_ReceiveEvent(t *testing.T) {
 		t.Skip("skip check data detail")
 	}
 
-	if ret, ok := ret.(*Event); ok {
-		if string(ret.Name) != string(eventName) {
-			t.Error("event name error:", string(ret.Name))
+	if ev, ok := ret.(*Event); ok {
+		if string(ev.Name) != string(eventName) {
+			t.Error("event name error:", string(ev.Name))
 		}
 
-		if !bytes.Equal(ret.Data, eventData.Bytes()) {
-			t.Error("event data error:\n", string(ret.Data))
+		if !bytes.Equal(ev.Data, eventData.Bytes()) {
+			t.Error("event data error:\n", string(ev.Data))
 		}
 	} else {
-		t.Error("receive type error")
+		t.Errorf("receive type error: expect *Event but [%#v]", ret)
 	}
 }
 
@@ -321,7 +326,12 @@ func TestConn_Fire(t *testing.T) {
 	buf, bw, c := createBWC()
 
 	prefix := CEvent
-	eventText := fmt.Sprintf("%s:%s", eventName, eventData)
+	b, err := event.Compress(eventData)
+	if err != nil {
+		t.Error(err)
+		t.Skip("compress fail")
+	}
+	eventText := fmt.Sprintf("%s:%s", eventName, b)
 	expect := fmt.Sprintf("%c%d\r\n%s\r\n", prefix, len(eventText), eventText)
 
 	c.Fire(eventName, eventData)

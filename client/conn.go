@@ -168,7 +168,7 @@ func (c *conn) Receive() (ret interface{}, err error) {
 		return
 	}
 	if len(line) == 0 {
-		log.Printf("<- client [%s]: %v = [%s] %v\n", c.conn.RemoteAddr().String(), line, line, err)
+		log.Printf("<- client [%s]: %v = [%s] %v\n", c.name, line, line, err)
 	}
 
 	switch line[0] {
@@ -207,13 +207,16 @@ func (c *conn) Receive() (ret interface{}, err error) {
 			err = e
 			return
 		}
-		//log.Println("receive:", string(eventName), string(eventData), e)
+
+		// 解壓縮
+		b, e := event.Uncompress(eventData)
 		if e != nil {
+			err = e
 			return
 		}
 		ret = &Event{
 			Name: event.Event(eventName),
-			Data: eventData,
+			Data: b,
 		}
 	}
 
@@ -270,7 +273,11 @@ func (c *conn) Unsubscribe(chans ...string) error {
 func (c *conn) Fire(ev event.Event, rd event.RawData) error {
 	buf := bytes.NewBuffer(ev.Bytes())
 	buf.WriteByte(':')
-	buf.Write(rd.Bytes())
+	b, err := event.Compress(rd)
+	if err != nil {
+		return err
+	}
+	buf.Write(b.Bytes())
 
 	c.writeEvent(buf.Bytes())
 	return c.flush()

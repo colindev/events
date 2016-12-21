@@ -148,11 +148,7 @@ func (l *listener) Run(channels ...interface{}) error {
 
 		switch m := m.(type) {
 		case *client.Event:
-			data, err := event.Uncompress(m.Data)
-			if err != nil {
-				go l.Trigger(event.Error, event.RawData(err.Error()))
-			}
-			go l.Trigger(m.Name, data)
+			go l.Trigger(m.Name, m.Data)
 		case *client.Reply:
 			if padding > 0 {
 				padding--

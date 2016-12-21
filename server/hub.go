@@ -198,10 +198,18 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 	}
 
 	prefix := []string{}
+	hasMatchAll := false
 	chs := c.EachChannels(func(ch string, re *regexp.Regexp) string {
-		prefix = append(prefix, event.Event(ch).Type())
+		group := event.Event(ch).Type()
+		if group == "*" {
+			hasMatchAll = true
+		}
+		prefix = append(prefix, group)
 		return ch
 	})
+	if hasMatchAll {
+		prefix = []string{}
+	}
 
 	h.Printf("recover: %s(%s) since=%d until=%d channels=%v\n", c.RemoteAddr(), c.GetName(), since, until, chs)
 
