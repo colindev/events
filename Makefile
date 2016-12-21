@@ -15,7 +15,7 @@ dep:
 test:
 	go test -v -race -bench . ./...
 
-build-all: _cli _server _redis-proxy
+build-all: _cli _server _redis-proxy _proxy-watch
 
 _cli:
 	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/events-cli ./cli/
@@ -25,3 +25,6 @@ _server:
 
 _redis-proxy:
 	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/redis-proxy ./redis-proxy/
+
+_proxy-watch:
+	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/watch ./redis-proxy/watch/
