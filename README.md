@@ -4,7 +4,13 @@ Depend on Redis
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/colindev/events)](https://goreportcard.com/report/github.com/colindev/events)
 [![Build Status](https://travis-ci.org/colindev/events.svg?branch=master)](https://travis-ci.org/colindev/events)
-[![GoDoc](https://godoc.org/github.com/colindev/events?status.svg)](https://godoc.org/github.com/colindev/events)
+
+- [![GoDoc](https://godoc.org/github.com/colindev/events?status.svg)](https://godoc.org/github.com/colindev/events/event) event
+- [![GoDoc](https://godoc.org/github.com/colindev/events?status.svg)](https://godoc.org/github.com/colindev/events/launcher) launcher 
+- [![GoDoc](https://godoc.org/github.com/colindev/events?status.svg)](https://godoc.org/github.com/colindev/events/listener) listener 
+- [![GoDoc](https://godoc.org/github.com/colindev/events?status.svg)](https://godoc.org/github.com/colindev/events/client) client
+- [![GoDoc](https://godoc.org/github.com/colindev/events?status.svg)](https://godoc.org/github.com/colindev/events/server) server 
+- [![GoDoc](https://godoc.org/github.com/colindev/events?status.svg)](https://godoc.org/github.com/colindev/events/cli) cli
 
 ### Server
 
