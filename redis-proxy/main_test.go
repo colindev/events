@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/colindev/events/redis-proxy/redis"
+)
 
 func Test_parseNotifyer(t *testing.T) {
 
@@ -18,7 +22,7 @@ func Test_parseNotifyer(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if x, ok := n.from.(*listener); !ok {
+	if x, ok := n.from.(*redis.Listener); !ok {
 		t.Errorf("%#v", x)
 	}
 	if n.fromType != "redis" {

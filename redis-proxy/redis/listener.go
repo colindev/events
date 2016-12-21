@@ -1,4 +1,4 @@
-package main
+package redis
 
 import (
 	"errors"
@@ -9,15 +9,15 @@ import (
 
 	"github.com/colindev/events/event"
 	eventsListener "github.com/colindev/events/listener"
-	"github.com/garyburd/redigo/redis"
+	x "github.com/garyburd/redigo/redis"
 )
 
 type (
-	listener struct {
+	Listener struct {
 		wg sync.WaitGroup
 		sync.RWMutex
-		pool           *redis.Pool
-		psc            redis.PubSubConn
+		pool           *x.Pool
+		psc            x.PubSubConn
 		running        bool
 		events         map[event.Event][]event.Handler
 		triggerRecover func(interface{})
@@ -31,19 +31,19 @@ var (
 	ErrListenerNotRunning = errors.New("[events] Listener not running")
 )
 
-// NewRedisListener return Listener instansce
-func NewRedisListener(pool *redis.Pool) eventsListener.Listener {
-	return &listener{
-		pool:   pool,
+// NewListener return Listener instansce
+func NewListener(pool *Pool) eventsListener.Listener {
+	return &Listener{
+		pool:   pool.Pool,
 		events: make(map[event.Event][]event.Handler),
 	}
 }
 
-func (l *listener) Recover(int64, int64) error {
+func (l *Listener) Recover(int64, int64) error {
 	return errors.New("not support")
 }
 
-func (l *listener) On(ev event.Event, hs ...event.Handler) eventsListener.Listener {
+func (l *Listener) On(ev event.Event, hs ...event.Handler) eventsListener.Listener {
 	l.Lock()
 	defer l.Unlock()
 
@@ -55,7 +55,7 @@ func (l *listener) On(ev event.Event, hs ...event.Handler) eventsListener.Listen
 	return l
 }
 
-func (l *listener) Run(channels ...interface{}) (err error) {
+func (l *Listener) Run(channels ...interface{}) (err error) {
 
 	err = func() error {
 		l.Lock()
@@ -86,13 +86,13 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	for {
 		m := l.psc.Receive()
 		switch m := m.(type) {
-		case redis.Message:
+		case x.Message:
 			go l.Trigger(event.Event(m.Channel), event.RawData(m.Data))
-		case redis.PMessage:
+		case x.PMessage:
 			go l.Trigger(event.Event(m.Channel), event.RawData(m.Data))
-		case redis.Pong:
+		case x.Pong:
 			go l.Trigger(event.PONG, event.RawData(m.Data))
-		case redis.Subscription:
+		case x.Subscription:
 			log.Println("[events]", m)
 		case error:
 			return m
@@ -100,14 +100,14 @@ func (l *listener) Run(channels ...interface{}) (err error) {
 	}
 }
 
-func (l *listener) WaitHandler() error {
+func (l *Listener) WaitHandler() error {
 
 	l.wg.Wait()
 
 	return nil
 }
 
-func (l *listener) RunForever(quit chan os.Signal, reconn time.Duration, chs ...interface{}) eventsListener.Listener {
+func (l *Listener) RunForever(quit chan os.Signal, reconn time.Duration, chs ...interface{}) eventsListener.Listener {
 
 	go func() {
 		for {
@@ -120,7 +120,7 @@ func (l *listener) RunForever(quit chan os.Signal, reconn time.Duration, chs ...
 	return l
 }
 
-func (l *listener) Trigger(ev event.Event, rd event.RawData) {
+func (l *Listener) Trigger(ev event.Event, rd event.RawData) {
 
 	l.RLock()
 	tr := l.triggerRecover
@@ -143,13 +143,13 @@ func (l *listener) Trigger(ev event.Event, rd event.RawData) {
 	}
 }
 
-func (l *listener) TriggerRecover(tr func(interface{})) {
+func (l *Listener) TriggerRecover(tr func(interface{})) {
 	l.Lock()
 	defer l.Unlock()
 	l.triggerRecover = tr
 }
 
-func (l *listener) findHandlers(target event.Event) []event.Handler {
+func (l *Listener) findHandlers(target event.Event) []event.Handler {
 	ret := []event.Handler{}
 	l.RLock()
 	defer l.RUnlock()
@@ -163,7 +163,7 @@ func (l *listener) findHandlers(target event.Event) []event.Handler {
 	return ret
 }
 
-func (l *listener) Ping(msg string) error {
+func (l *Listener) Ping(msg string) error {
 	if l.psc.Conn == nil {
 		return ErrListenerNotRunning
 	}

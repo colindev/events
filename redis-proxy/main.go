@@ -15,7 +15,7 @@ import (
 	"github.com/colindev/events/event"
 	eventsLauncher "github.com/colindev/events/launcher"
 	eventsListener "github.com/colindev/events/listener"
-	"github.com/garyburd/redigo/redis"
+	"github.com/colindev/events/redis-proxy/redis"
 )
 
 type channels []interface{}
@@ -139,7 +139,7 @@ func parseNotifyer(addr string) (*Notifyer, error) {
 	)
 	switch s[0] {
 	case "redis":
-		from = NewRedisListener(redis.NewPool(func() (redis.Conn, error) {
+		from = redis.NewListener(redis.NewPool(func() (redis.Conn, error) {
 			return redis.Dial("tcp", addr)
 		}, 2))
 	case "events":
@@ -168,7 +168,7 @@ func parseReceiver(addr string) (Receiver, string, error) {
 	var to Receiver
 	switch s[0] {
 	case "redis":
-		to = NewRedisLauncher(redis.NewPool(func() (redis.Conn, error) {
+		to = redis.NewLauncher(redis.NewPool(func() (redis.Conn, error) {
 			return redis.Dial("tcp", addr)
 		}, 10))
 	case "events":

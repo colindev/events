@@ -8,8 +8,9 @@ dep:
 	go get -a ./launcher/
 	go get -a ./listener/
 	go get -a ./cli/
-	go get -a ./server/...
-	go get -a ./redis-proxy/
+	go get -a ./store/
+	go get -a ./server/
+	go get -a ./redis-proxy/...
 
 test:
 	go test -v -race -bench . ./...

@@ -1,25 +1,25 @@
-package main
+package redis
 
 import (
 	"github.com/colindev/events/event"
-	"github.com/garyburd/redigo/redis"
+	x "github.com/garyburd/redigo/redis"
 )
 
 type (
 	// Launcher responsible for event data
-	RedisLauncher interface {
+	Launcher interface {
 		Fire(event.Event, event.RawData) error
 		Close() error
 	}
 
 	launcher struct {
-		pool *redis.Pool
+		pool *x.Pool
 	}
 )
 
-// New return a Launcher instance
-func NewRedisLauncher(pool *redis.Pool) RedisLauncher {
-	return &launcher{pool}
+// NewLauncher return a Launcher instance
+func NewLauncher(pool *Pool) Launcher {
+	return &launcher{pool.Pool}
 }
 
 func (l *launcher) Fire(ev event.Event, rd event.RawData) (err error) {
