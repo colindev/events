@@ -67,6 +67,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	notifyer.verbose = verbose
 
 	receiver, mode, err := parseReceiver(s[1])
 	if err != nil {
@@ -90,6 +91,7 @@ type Receiver interface {
 }
 
 type Notifyer struct {
+	verbose  bool
 	fromType string
 	from     eventsListener.Listener
 	toType   string
@@ -108,7 +110,14 @@ func (rds *Notifyer) Run(shutdown chan os.Signal, chs ...interface{}) error {
 	for _, ch := range chs {
 		s := fmt.Sprintf("%v", ch)
 		rds.from.On(event.Event(s), func(ev event.Event, v event.RawData) {
-			rds.to.Fire(ev, v)
+			if rds.verbose {
+				log.Printf("%s: %s\n", rds.fromType, ev)
+				log.Println(v.String())
+			}
+			err := rds.to.Fire(ev, v)
+			if err != nil {
+				log.Printf("%s: %s error %v\n", rds.fromType, ev, err)
+			}
 		})
 	}
 
