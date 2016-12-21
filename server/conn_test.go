@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/colindev/events/client"
+	"github.com/colindev/events/event"
 	"github.com/colindev/events/server/fake"
 )
 
@@ -82,16 +82,16 @@ func TestConn_SetFlags(t *testing.T) {
 
 func TestConn_EachChannels(t *testing.T) {
 	c := &conn{
-		chs: map[string]*regexp.Regexp{
-			"a": nil,
-			"b": nil,
-			"c": nil,
+		chs: map[event.Event]bool{
+			"a": true,
+			"b": true,
+			"c": true,
 		},
 	}
 
-	chs1 := c.EachChannels(func(ch string, _ *regexp.Regexp) string {
+	chs1 := c.EachChannels(func(ch event.Event) event.Event {
 		t.Log(ch)
-		if ch != "b" {
+		if ch.String() != "b" {
 			return ch
 		}
 		return ""
@@ -173,9 +173,9 @@ func TestConnSubAndUnsub(t *testing.T) {
 	}
 
 	// start test unsub
-	otherChs := []string{"aa.*", "aaaa.*", "aaa.bbb"}
+	otherChs := []event.Event{"aa.*", "aaaa.*", "aaa.bbb"}
 	for _, ch := range otherChs {
-		c.Subscribe([]byte(ch))
+		c.Subscribe(ch.Bytes())
 	}
 
 	ind, err = c.Unsubscribe([]byte(tempSpace))

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -43,6 +42,7 @@ const (
 )
 
 var (
+	OK  = []byte{0x1f, 0x8b, 0x8, 0x0, 0x0, 0x9, 0x6e, 0x88, 0x0, 0xff}
 	EOL = []byte{'\r', '\n'}
 )
 
@@ -167,9 +167,7 @@ func (c *conn) Receive() (ret interface{}, err error) {
 	if err != nil {
 		return
 	}
-	if len(line) == 0 {
-		log.Printf("<- client [%s]: %v = [%s] %v\n", c.name, line, line, err)
-	}
+	// log.Printf("<- client [%s]: %v = [%s] %v\n", c.name, line, line, err)
 
 	switch line[0] {
 	case CReply:

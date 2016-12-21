@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -167,6 +166,7 @@ func (h *Hub) publish(e *store.Event) int {
 	h.RUnlock()
 
 	eventName, eventData, err := parseEvent([]byte(e.Raw))
+	// just display
 	rd, err := event.Uncompress(eventData)
 	h.Println("publish:", string(eventName), rd, err)
 	var cnt int
@@ -199,8 +199,8 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 
 	prefix := []string{}
 	hasMatchAll := false
-	chs := c.EachChannels(func(ch string, re *regexp.Regexp) string {
-		group := event.Event(ch).Type()
+	chs := c.EachChannels(func(ch event.Event) event.Event {
+		group := ch.Type()
 		if group == "*" {
 			hasMatchAll = true
 		}
@@ -254,7 +254,7 @@ func (h *Hub) handle(c Conn) {
 		return
 	}
 
-	c.SendEvent(fmt.Sprintf("%s:ok", event.Connected))
+	c.SendEvent(fmt.Sprintf("%s:%s", event.Connected, client.OK))
 
 	h.Println(c.RemoteAddr(), " connect")
 	for {

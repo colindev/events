@@ -7,12 +7,12 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/colindev/events/client"
+	"github.com/colindev/events/event"
 	"github.com/colindev/events/store"
 )
 
@@ -30,7 +30,7 @@ type Conn interface {
 	GetLastAuth() *store.Auth
 	RemoteAddr() string
 	GetAuth() *store.Auth
-	EachChannels(fs ...func(string, *regexp.Regexp) string) map[string]*regexp.Regexp
+	EachChannels(fs ...func(event.Event) event.Event) map[event.Event]bool
 	ReadLine() ([]byte, error)
 	ReadLen([]byte) ([]byte, error)
 	Subscribe([]byte) (string, error)
@@ -51,7 +51,7 @@ type conn struct {
 	r      *bufio.Reader
 	flags  int
 	err    error
-	chs    map[string]*regexp.Regexp
+	chs    map[event.Event]bool
 	authed bool
 	// recover events 用
 	lastAuth    *store.Auth
@@ -66,7 +66,7 @@ func newConn(c net.Conn, t time.Time) Conn {
 		conn:        c,
 		w:           bufio.NewWriter(c),
 		r:           bufio.NewReader(c),
-		chs:         map[string]*regexp.Regexp{},
+		chs:         map[event.Event]bool{},
 		connectedAt: t.Unix(),
 	}
 }
@@ -175,22 +175,14 @@ func (c *conn) Subscribe(p []byte) (string, error) {
 
 	// 去除空白/換行
 	ind := strings.TrimSpace(string(p))
+	ev := event.Event(ind)
 	// 判斷是否重複註冊
-	if _, exists := c.chs[ind]; exists {
+	if _, exists := c.chs[ev]; exists {
 		// 容錯重複註冊
 		return ind, nil
 	}
-	// 轉換 . => \.
-	pattem := strings.Replace(ind, ".", "\\.", -1)
-	// 轉換 * => [^.]*
-	pattem = strings.Replace(pattem, "*", "[^.]*", -1)
-	// 建構正規表達式物件
-	re, err := regexp.Compile("^" + pattem + "$")
-	if err != nil {
-		return ind, err
-	}
 
-	c.chs[ind] = re
+	c.chs[ev] = true
 	return ind, nil
 }
 
@@ -200,12 +192,13 @@ func (c *conn) Unsubscribe(p []byte) (string, error) {
 
 	// 去除空白/換行
 	ind := strings.TrimSpace(string(p))
+	ev := event.Event(ind)
 	// 判斷是否存在
-	if _, exists := c.chs[ind]; !exists {
+	if _, exists := c.chs[ev]; !exists {
 		return "", fmt.Errorf("channel(%s) not found", ind)
 	}
 
-	delete(c.chs, ind)
+	delete(c.chs, ev)
 
 	return ind, nil
 }
@@ -214,10 +207,10 @@ func (c *conn) IsListening(eventName string) bool {
 	c.RLock()
 	defer c.RUnlock()
 
-	ev := []byte(eventName)
+	ev := event.Event(eventName)
 
-	for _, re := range c.chs {
-		if re.Match(ev) {
+	for ch := range c.chs {
+		if ch.Match(ev) {
 			return true
 		}
 	}
@@ -225,21 +218,21 @@ func (c *conn) IsListening(eventName string) bool {
 	return false
 }
 
-func (c *conn) EachChannels(fs ...func(string, *regexp.Regexp) string) map[string]*regexp.Regexp {
+func (c *conn) EachChannels(fs ...func(event.Event) event.Event) map[event.Event]bool {
 	c.RLock()
 	defer c.RUnlock()
 
-	ret := map[string]*regexp.Regexp{}
+	ret := map[event.Event]bool{}
 
 NEXT:
-	for ch, re := range c.chs {
+	for ch := range c.chs {
 		for _, f := range fs {
-			ch = f(ch, re)
-			if ch == "" {
+			ch = f(ch)
+			if ch.String() == "" {
 				continue NEXT
 			}
 		}
-		ret[ch] = re
+		ret[ch] = true
 	}
 
 	return ret
