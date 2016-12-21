@@ -7,6 +7,8 @@ func TestEventType(t *testing.T) {
 		Event("pong"):     "pong",
 		Event("x.1"):      "x",
 		Event("yy.a.b.c"): "yy",
+		Event("*.x"):      "*",
+		Event("*"):        "*",
 	}
 
 	for ev, et := range data {
@@ -64,4 +66,15 @@ func TestEventMatchs(t *testing.T) {
 			t.Error(e, s, " MUST not match!")
 		}
 	}
+	e = Event("*")
+	matchTrue = []string{
+		"x.x",
+		"xxxx",
+	}
+	for _, s := range matchTrue {
+		if !e.Match(Event(s)) {
+			t.Error(e, s, " MUST match!")
+		}
+	}
+
 }

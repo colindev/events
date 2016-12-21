@@ -2,29 +2,35 @@ package listener
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"sync"
+	"time"
 
+	"github.com/colindev/events/client"
 	"github.com/colindev/events/event"
-	"github.com/colindev/events/redis"
 )
 
 type (
 	// Listener responsible for trigger match handlers
 	Listener interface {
 		On(event.Event, ...event.Handler) Listener
+		Recover(int64, int64) error
 		Trigger(event.Event, event.RawData)
 		TriggerRecover(func(interface{}))
 		Run(channels ...interface{}) error
-		Stop() error
+		RunForever(chan os.Signal, time.Duration, ...interface{}) Listener
+		WaitHandler() error
 		Ping(string) error
 	}
 
 	listener struct {
 		wg *sync.WaitGroup
 		*sync.RWMutex
-		pool           redis.Pool
-		psc            redis.PubSubConn
+		conn           client.Conn
+		chs            []string
+		dial           func() (client.Conn, error)
 		running        bool
 		events         map[event.Event][]event.Handler
 		triggerRecover func(interface{})
@@ -39,11 +45,11 @@ var (
 )
 
 // New return Listener instansce
-func New(pool redis.Pool) Listener {
+func New(dial func() (client.Conn, error)) Listener {
 	return &listener{
 		wg:      &sync.WaitGroup{},
 		RWMutex: &sync.RWMutex{},
-		pool:    pool,
+		dial:    dial,
 		events:  make(map[event.Event][]event.Handler),
 	}
 }
@@ -60,46 +66,145 @@ func (l *listener) On(ev event.Event, hs ...event.Handler) Listener {
 	return l
 }
 
-func (l *listener) Run(channels ...interface{}) (err error) {
+func (l *listener) setConn(conn client.Conn) {
+	l.Lock()
+	l.conn = conn
+	l.Unlock()
+}
 
-	err = func() error {
+func (l *listener) Run(channels ...interface{}) error {
+
+	var (
+		err  error
+		dial func() (client.Conn, error)
+	)
+
+	dial, err = func() (func() (client.Conn, error), error) {
 		l.Lock()
 		defer l.Unlock()
 		if l.running {
-			return ErrListenerAlreadyRunning
+			return nil, ErrListenerAlreadyRunning
 		}
 		l.running = true
-		return nil
+		fn := l.dial
+		return fn, nil
 	}()
+
+	defer func() {
+		// 斷線的話就重新設定 running = false
+		l.running = false
+		var rd event.RawData
+		if err != nil {
+			rd = event.RawData(err.Error())
+		}
+		l.Trigger(event.Disconnected, rd)
+	}()
+
 	if err != nil {
-		return
+		return err
 	}
 
-	// 斷線的話就重新設定 running = false
-	defer func() {
-		l.running = false
-	}()
-
-	conn := l.pool.Get()
+	// 建立連線
+	l.Trigger(event.Connecting, nil)
+	conn, err := dial()
+	if err != nil {
+		return err
+	}
 	defer conn.Close()
-	l.psc.Conn = conn
-	l.psc.PSubscribe(channels...)
+	l.setConn(conn)
 
-	for {
-		m := l.psc.Receive()
-		switch m := m.(type) {
-		case redis.Message:
-			go l.Trigger(event.Event(m.Channel), event.RawData(m.Data))
-		case redis.PMessage:
-			go l.Trigger(event.Event(m.Channel), event.RawData(m.Data))
-		case redis.Pong:
-			go l.Trigger(event.PONG, event.RawData(m.Data))
-		case redis.Subscription:
-			log.Println("[events]", m)
-		case error:
-			return m
+	// 登入名稱
+	if err := conn.Auth(client.Readable); err != nil {
+		return err
+	}
+
+	// 轉換頻道
+	convChans := []string{}
+	for _, c := range channels {
+		switch v := c.(type) {
+		case string:
+			convChans = append(convChans, v)
+		case event.Event:
+			convChans = append(convChans, string(v))
+		case []byte:
+			convChans = append(convChans, string(v))
+		default:
+			convChans = append(convChans, fmt.Sprintf("%v", v))
 		}
 	}
+
+	if err := conn.Subscribe(convChans...); err != nil {
+		return err
+	}
+	l.chs = convChans
+
+	padding := len(l.chs)
+	for {
+		var m interface{}
+		m, err = conn.Receive()
+		if err != nil {
+			return err
+		}
+
+		switch m := m.(type) {
+		case *client.Event:
+			go l.Trigger(m.Name, m.Data)
+		case *client.Reply:
+			if padding > 0 {
+				padding--
+				if padding == 0 {
+					go l.Trigger(event.Ready, nil)
+				}
+			}
+			log.Println("[event] reply ", m.String())
+		default:
+			log.Printf("[event] unexpect %#v\n", m)
+		}
+	}
+}
+
+func (l *listener) WaitHandler() error {
+	l.RLock()
+	running := l.running
+	l.RUnlock()
+	if running {
+		return l.conn.Unsubscribe(l.chs...)
+	}
+
+	l.wg.Wait()
+
+	return nil
+}
+
+func (l *listener) RunForever(quit chan os.Signal, reconnDuration time.Duration, chs ...interface{}) Listener {
+
+	go func() {
+		s := <-quit
+		l.RLock()
+		conn := l.conn
+		l.RUnlock()
+		if conn != nil {
+			conn.Close()
+		}
+		quit <- s
+	}()
+
+	for {
+		select {
+		case <-quit:
+			return l
+		default:
+			l.Run(chs...)
+			time.Sleep(reconnDuration)
+		}
+	}
+}
+
+// Recover 包裝 conn Recover / RecoverSince
+// i 小於等於 0 時, 調用 conn.Recover() 讓 server 處理還原時間點
+// i 大於 0 時, 調用 onn.RecoverSince(timestamp) 由 client 決定還原時間點
+func (l *listener) Recover(since, until int64) error {
+	return l.conn.Recover(since, until)
 }
 
 func (l *listener) Trigger(ev event.Event, rd event.RawData) {
@@ -146,21 +251,9 @@ func (l *listener) findHandlers(target event.Event) []event.Handler {
 }
 
 func (l *listener) Ping(msg string) error {
-	if l.psc.Conn == nil {
+	if l.conn == nil {
 		return ErrListenerNotRunning
 	}
 
-	return l.psc.Ping(msg)
-}
-
-func (l *listener) Stop() error {
-	l.RLock()
-	defer l.RUnlock()
-	if l.running {
-		return l.psc.PUnsubscribe()
-	}
-
-	l.wg.Wait()
-
-	return nil
+	return l.conn.Ping(msg)
 }

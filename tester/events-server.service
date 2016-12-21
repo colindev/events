@@ -1,0 +1,17 @@
+[Unit]
+Description=test server
+After=network.target
+
+[Service]
+Type=forking
+User={USER}
+
+ExecStart=/bin/bash -c '{PWD}/server/server -env {PWD}/server/.env &'
+ExecStop=/bin/kill -s QUIT $MAINPID
+
+Restart=always
+RestartSec=20s
+RemainBeforeExit=true
+
+[Install]
+WantedBy=multi-user.target

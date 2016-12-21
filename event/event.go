@@ -6,8 +6,23 @@ import (
 )
 
 const (
-	// PONG is event for redis ping/pong
+	// PONG is event for conn ping/pong
 	PONG Event = "pong"
+
+	// Connecting 連線中
+	Connecting Event = "connecting"
+
+	// Connected 連線事件
+	Connected Event = "connected"
+
+	// Disconnected 斷線事件
+	Disconnected Event = "disconnected"
+
+	// Ready 登入 註冊頻道 等處理完畢
+	Ready Event = "ready"
+
+	// Error event
+	Error Event = "error"
 )
 
 type (
@@ -32,4 +47,9 @@ func (ev Event) Match(event Event) bool {
 
 func (ev Event) String() string {
 	return string(ev)
+}
+
+// Bytes convert event to []byte
+func (ev Event) Bytes() []byte {
+	return []byte(ev)
 }

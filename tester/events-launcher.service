@@ -1,0 +1,18 @@
+[Unit]
+Description=test launcher
+After=network.target
+Wants=events-server.service
+
+[Service]
+Type=forking
+User={USER}
+
+ExecStart=/bin/bash -c '{PWD}/launcher/launcher >> {PWD}/launcher.log &'
+ExecStop=/bin/kill -s QUIT $MAINPID
+
+Restart=always
+RestartSec=20s
+RemainBeforeExit=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,27 +1,30 @@
 package event
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
-func TestMarshal(t *testing.T) {
+func TestCompress(t *testing.T) {
 	var (
-		rd  RawData
 		err error
+		raw = RawData("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 	)
 
-	data := map[string]interface{}{
-		"A":         "A",
-		"abc":       "abc",
-		`{"A":123}`: struct{ A int }{123},
+	t.Logf("raw: [%s]", raw)
+	s, err := Compress(raw)
+	if err != nil {
+		t.Error("compress error:", err)
 	}
 
-	for s, o := range data {
-		rd, err = Marshal(o)
-		if err != nil || rd.String() != s {
-			t.Errorf("Marshal('a') return %v, %v\n", rd, err)
-		}
+	t.Logf("compressed: [%s]", s)
+	if len(raw.Bytes()) <= len(s.Bytes()) {
+		t.Error("compressed must smaller then raw")
 	}
 
-	if RawData("A").String() != "A" {
-		t.Error("RawData convert string fail")
+	back, err := Uncompress(s)
+	t.Logf("uncompressed: [%s]", back)
+	if !bytes.Equal(back.Bytes(), raw.Bytes()) {
+		t.Error("uncompress fail: different data")
 	}
 }
