@@ -27,16 +27,26 @@ func (chs *channels) Set(ev string) error {
 	return nil
 }
 
+func hash(ev event.Event, rd event.RawData) string {
+
+	s := sha1.New()
+	s.Write(ev.Bytes())
+	s.Write([]byte(":"))
+	s.Write(rd.Bytes())
+	return fmt.Sprintf("%x", s.Sum(nil))
+}
+
 type Line struct {
-	hash                string
-	name                event.Event
-	raw                 event.RawData
-	cntRedis, cntEvents int
+	hash                  string
+	name                  event.Event
+	raw                   event.RawData
+	timeRedis, timeEvents time.Time
+	cntRedis, cntEvents   int
 }
 
 func (l *Line) Hash() string {
 	if l.hash == "" {
-		l.hash = fmt.Sprintf("%x", sha1.Sum(l.raw.Bytes()))
+		l.hash = hash(l.name, l.raw)
 	}
 	return l.hash
 }
@@ -51,9 +61,7 @@ func (c *Cache) Append(from string, ev event.Event, rd event.RawData) *Line {
 	c.Lock()
 	defer c.Unlock()
 
-	s := sha1.New()
-	s.Write(ev.Bytes())
-	hash := fmt.Sprintf("%x", s.Sum(rd.Bytes()))
+	h := hash(ev, rd)
 
 	el := c.list.Back()
 	var line *Line
@@ -62,7 +70,7 @@ func (c *Cache) Append(from string, ev event.Event, rd event.RawData) *Line {
 		if el == nil {
 			break
 		}
-		if l := el.Value.(*Line); l.hash == hash {
+		if l := el.Value.(*Line); l.hash == h {
 			line = l
 			break
 		}
@@ -71,7 +79,7 @@ func (c *Cache) Append(from string, ev event.Event, rd event.RawData) *Line {
 
 	if line == nil {
 		line = &Line{
-			hash: hash,
+			hash: h,
 			name: ev,
 			raw:  rd,
 		}
@@ -84,8 +92,10 @@ func (c *Cache) Append(from string, ev event.Event, rd event.RawData) *Line {
 	switch from {
 	case "redis":
 		line.cntRedis++
+		line.timeRedis = time.Now()
 	case "events":
 		line.cntEvents++
+		line.timeEvents = time.Now()
 	}
 
 	return line
@@ -165,6 +175,7 @@ func main() {
 
 		fmt.Println(t)
 		el := cache.list.Front()
+		var cntMiss, cntDup int
 		for {
 			if el == nil {
 				break
@@ -174,14 +185,21 @@ func main() {
 			line := el.Value.(*Line)
 			if line.cntRedis == 0 || line.cntEvents == 0 {
 				color = "\033[31m"
+				cntMiss++
 			} else if line.cntRedis > 1 || line.cntEvents > 1 {
 				color = "\033[35m"
+				cntDup++
 			}
 
-			fmt.Printf("%s%s redis: %d / events: %d \033[m\n", color, line.name, line.cntRedis, line.cntEvents)
-			fmt.Println(line.raw.String())
+			fmt.Printf("%s%s redis: %d / events: %d\033[m \033[2m%s\033[m\n", color, line.name, line.cntRedis, line.cntEvents, line.Hash())
+			if verbose {
+				fmt.Printf("\033[2;33m%s (redis)\033[m\n", line.timeRedis)
+				fmt.Printf("\033[2;33m%s (events)\033[m\n", line.timeEvents)
+				fmt.Printf("\033[2m%s\033[m\n", line.raw.String())
+			}
 			el = el.Next()
 		}
 		cache.RUnlock()
+		fmt.Printf("miss: %d/%d duplicate: %d/%d\n", cntMiss, cache.keep, cntDup, cache.keep)
 	}
 }
