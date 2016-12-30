@@ -23,6 +23,7 @@ type (
 		RunForever(chan os.Signal, time.Duration, ...interface{}) Listener
 		WaitHandler() error
 		Ping(string) error
+		Info() error
 	}
 
 	listener struct {
@@ -256,4 +257,12 @@ func (l *listener) Ping(msg string) error {
 	}
 
 	return l.conn.Ping(msg)
+}
+
+func (l *listener) Info() error {
+	if l.conn == nil {
+		return ErrListenerNotRunning
+	}
+
+	return l.conn.Info()
 }

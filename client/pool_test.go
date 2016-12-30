@@ -27,6 +27,10 @@ func (m *fake) Ping(s string) error {
 	m.fn(m.Ping, s)
 	return nil
 }
+func (m *fake) Info() error {
+	m.fn(m.Info)
+	return nil
+}
 func (m *fake) Close() error {
 	m.fn(m.Close)
 	return nil

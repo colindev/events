@@ -44,6 +44,14 @@ type Conn interface {
 	SendEvent(e string) error
 }
 
+// ConnStatus contain conn status
+type ConnStatus struct {
+	Channel  []event.Event
+	Name     string
+	LastAuth *store.Auth
+	Flag     int
+}
+
 type conn struct {
 	sync.RWMutex
 	conn   net.Conn
@@ -68,6 +76,28 @@ func newConn(c net.Conn, t time.Time) Conn {
 		r:           bufio.NewReader(c),
 		chs:         map[event.Event]bool{},
 		connectedAt: t.Unix(),
+	}
+}
+
+// Status non-export
+func (c *conn) Status() ConnStatus {
+	c.RLock()
+	name := c.name
+	flags := c.flags
+	lastAuth := c.lastAuth
+	c.RUnlock()
+
+	chs := []event.Event{}
+	c.EachChannels(func(ev event.Event) event.Event {
+		chs = append(chs, ev)
+		return ev
+	})
+
+	return ConnStatus{
+		Channel:  chs,
+		Name:     name,
+		LastAuth: lastAuth,
+		Flag:     flags,
 	}
 }
 

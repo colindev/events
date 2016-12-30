@@ -9,6 +9,9 @@ const (
 	// PONG is event for conn ping/pong
 	PONG Event = "pong"
 
+	// Info from server
+	Info Event = "info"
+
 	// Connecting 連線中
 	Connecting Event = "connecting"
 
@@ -20,6 +23,12 @@ const (
 
 	// Ready 登入 註冊頻道 等處理完畢
 	Ready Event = "ready"
+
+	// Join 通知其他具名連線加入
+	Join Event = "join"
+
+	// Leave 具名連線退出事件
+	Leave Event = "leave"
 
 	// Error event
 	Error Event = "error"

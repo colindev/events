@@ -29,6 +29,7 @@ func (f *fConn) Subscribe(...string) error             { return nil }
 func (f *fConn) Unsubscribe(...string) error           { return nil }
 func (f *fConn) Fire(event.Event, event.RawData) error { return nil }
 func (f *fConn) Ping(string) error                     { return nil }
+func (f *fConn) Info() error                           { return nil }
 func (f *fConn) Conn() net.Conn                        { return nil }
 func (f *fConn) Err() error                            { return nil }
 

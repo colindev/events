@@ -170,3 +170,6 @@ func (l *Listener) Ping(msg string) error {
 
 	return l.psc.Ping(msg)
 }
+
+// 不實作
+func (l *Listener) Info() error { return nil }

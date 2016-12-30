@@ -44,6 +44,7 @@ func main() {
 		launcherEvent string
 		recoverSince  int64
 		recoverUntil  int64
+		showInfo      bool
 		showVer       bool
 		verbose       bool
 
@@ -52,6 +53,7 @@ func main() {
 
 	cli.BoolVar(&verbose, "V", false, "verbose")
 	cli.BoolVar(&showVer, "v", false, "version")
+	cli.BoolVar(&showInfo, "i", false, "show server info")
 	cli.StringVar(&appName, "app", "", "app name")
 	cli.StringVar(&listenAddr, "server", "127.0.0.1:6300", "listen event address")
 	cli.StringVar(&launcherEvent, "fire", "", "fire event {name}:{data}")
@@ -69,18 +71,19 @@ func main() {
 	}
 
 	// launcher
-	la := launcher.New(client.NewPool(func() (client.Conn, error) {
-		return client.Dial("", listenAddr)
-	}, 30))
 	if ev := strings.SplitN(launcherEvent, ":", 2); len(ev) == 2 {
+		la := launcher.New(client.NewPool(func() (client.Conn, error) {
+			return client.Dial("", listenAddr)
+		}, 30))
 		err := la.Fire(event.Event(ev[0]), event.RawData(ev[1]))
 		if verbose {
 			log.Printf("fire: %v error(%v)\n", ev, err)
 		}
+		defer la.Close()
 	}
-	defer la.Close()
 
 	// listener
+	quit := make(chan os.Signal, 1)
 	li := listener.New(func() (client.Conn, error) {
 		return client.Dial(appName, listenAddr)
 	})
@@ -95,14 +98,20 @@ func main() {
 	}
 
 	if len(listenEvents) == 0 {
-		return
+		if !showInfo {
+			return
+		}
+		// display and close
+		li.On(event.Info, func(ev event.Event, rd event.RawData) {
+			handler(ev, rd)
+			quit <- syscall.SIGQUIT
+		})
 	}
 
 	for _, ev := range listenEvents {
 		li.On(event.Event(ev.(string)), handler)
 	}
 
-	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
 	li.On(event.Ready, func(ev event.Event, _ event.RawData) {
@@ -115,6 +124,10 @@ func main() {
 	}).On(event.Connected, func(ev event.Event, _ event.RawData) {
 		// Connected
 		log.Println(ev)
+
+		if showInfo {
+			li.Info()
+		}
 	}).On(event.Disconnected, func(ev event.Event, v event.RawData) {
 		// Disconnected
 		log.Printf("%s: %s\n", ev, v)

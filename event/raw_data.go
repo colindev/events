@@ -3,6 +3,7 @@ package event
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"io"
 )
 
@@ -58,4 +59,14 @@ func Uncompress(rd RawData) (RawData, error) {
 	io.Copy(&ret, zpr)
 
 	return RawData(ret.Bytes()), nil
+}
+
+// Marshal 資料打包
+func Marshal(v interface{}) (RawData, error) {
+	return json.Marshal(v)
+}
+
+// Unmarshal 資料轉換
+func Unmarshal(rd RawData, v interface{}) error {
+	return json.Unmarshal(rd, v)
 }

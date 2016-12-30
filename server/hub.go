@@ -105,6 +105,7 @@ func (h *Hub) auth(c Conn, p []byte) error {
 	h.Printf("[hub] %s last: %+v\n", name, auth)
 	nowAuth := c.GetAuth()
 	h.Printf("[hub] %s auth: %v\n", name, nowAuth)
+
 	return h.store.NewAuth(nowAuth)
 }
 
@@ -128,7 +129,6 @@ func (h *Hub) quit(c Conn, t time.Time) (auth *store.Auth) {
 	if err := h.store.UpdateAuth(auth); err != nil {
 		h.Println(err)
 	}
-	h.Printf("[hub] %s quit: %+v\n", c.GetName(), auth)
 	return
 }
 
@@ -148,18 +148,25 @@ func (h *Hub) quitAll(t time.Time) {
 	}
 }
 
-func (h *Hub) publish(e *store.Event) int {
+func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 
 	h.RLock()
 	var conns = []Conn{}
+	var ignores = map[Conn]bool{}
+
+	// 先整理要忽略的連線
+	for _, c := range ignore {
+		ignores[c] = true
+	}
+
 	for _, c := range h.m {
-		if c.IsListening(e.Name) {
+		if c.IsListening(e.Name) && !ignores[c] {
 			conns = append(conns, c)
 		}
 	}
 
 	for c := range h.g {
-		if c.IsListening(e.Name) {
+		if c.IsListening(e.Name) && !ignores[c] {
 			conns = append(conns, c)
 		}
 	}
@@ -236,7 +243,7 @@ func (h *Hub) handle(c Conn) {
 
 	h.Add(1)
 	defer func() {
-		h.quit(c, time.Now())
+		h.publishQuit(c, h.quit(c, time.Now()))
 		h.Done()
 		if err := c.Err(); err != nil {
 			h.Println("conn error:", err)
@@ -254,9 +261,14 @@ func (h *Hub) handle(c Conn) {
 		return
 	}
 
-	c.SendEvent(fmt.Sprintf("%s:%s", event.Connected, client.OK))
-
 	h.Println(c.RemoteAddr(), " connect")
+
+	// 發送連線事件
+	c.SendEvent(string(makeEventStream(event.Connected.Bytes(), client.OK)))
+
+	// 廣播具名客端 Join 事件
+	h.publishJoin(c)
+
 	for {
 		line, err := c.ReadLine()
 		if err != nil {
@@ -269,14 +281,7 @@ func (h *Hub) handle(c Conn) {
 		}
 
 		switch line[0] {
-		case client.CAuth:
-			// 失敗直接斷線
-			if err := h.auth(c, line[1:]); err != nil {
-				h.Println(err)
-				c.SendError(err)
-				return
-			}
-
+		// case client.CAuth: 只做單次登入
 		case client.CRecover:
 			var (
 				since, until int64
@@ -321,6 +326,14 @@ func (h *Hub) handle(c Conn) {
 			}
 
 			c.SendPong(p)
+
+		case client.CInfo:
+			rd, err := event.Compress(event.RawData(h.info()))
+			if err != nil {
+				c.SendError(err)
+			} else {
+				c.SendEvent(string(makeEventStream(event.Info.Bytes(), rd)))
+			}
 
 		case client.CEvent:
 			p, err := c.ReadLen(line[1:])
@@ -392,6 +405,67 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string, others ...Conn)
 	h.Println("close store")
 
 	return err
+}
+
+func (h *Hub) publishJoin(c Conn) error {
+
+	if !c.HasName() {
+		return nil
+	}
+	connAuth := c.GetAuth()
+	rd, err := event.Marshal(connAuth)
+	if err != nil {
+		return err
+	}
+	rdCompressed, err := event.Compress(rd)
+	if err != nil {
+		return err
+	}
+	storeEvent := makeEvent(event.Join.Bytes(), rdCompressed, time.Unix(connAuth.ConnectedAt, 0))
+	h.publish(storeEvent, c)
+
+	return nil
+}
+
+func (h *Hub) publishQuit(c Conn, auth *store.Auth) error {
+	if !c.HasName() {
+		return nil
+	}
+	rd, err := event.Marshal(auth)
+	if err != nil {
+		return err
+	}
+	rdCompressed, err := event.Compress(rd)
+	if err != nil {
+		return err
+	}
+	storeEvent := makeEvent(event.Leave.Bytes(), rdCompressed, time.Unix(auth.DisconnectedAt, 0))
+	h.publish(storeEvent, c)
+
+	return nil
+}
+
+func (h *Hub) info() string {
+
+	h.RLock()
+	defer h.RUnlock()
+
+	ghost := []ConnStatus{}
+	for c := range h.g {
+		ghost = append(ghost, c.(*conn).Status())
+	}
+
+	auth := map[string]ConnStatus{}
+	for name, c := range h.m {
+		auth[name] = c.(*conn).Status()
+	}
+
+	b, _ := event.Marshal(struct {
+		Auth  map[string]ConnStatus
+		Ghost []ConnStatus
+	}{auth, ghost})
+
+	return string(b)
 }
 
 func makeEventStream(event, data []byte) []byte {

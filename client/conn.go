@@ -34,6 +34,8 @@ const (
 	CPong byte = '@'
 	// CRecover client 請求過往資料
 	CRecover byte = '>'
+	// CInfo 請求 server 資料
+	CInfo byte = '#'
 
 	// Writable flag
 	Writable = 1
@@ -88,6 +90,7 @@ type Conn interface {
 	Unsubscribe(...string) error
 	Fire(event.Event, event.RawData) error
 	Ping(string) error
+	Info() error
 	Receive() (interface{}, error)
 	Conn() net.Conn
 	Err() error
@@ -284,6 +287,12 @@ func (c *conn) Fire(ev event.Event, rd event.RawData) error {
 func (c *conn) Ping(m string) error {
 	c.writeLen(CPing, len(m))
 	c.w.WriteString(m)
+
+	return c.flush()
+}
+
+func (c *conn) Info() error {
+	c.w.WriteByte(CInfo)
 
 	return c.flush()
 }
