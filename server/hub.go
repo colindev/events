@@ -328,7 +328,7 @@ func (h *Hub) handle(c Conn) {
 			c.SendPong(p)
 
 		case client.CInfo:
-			rd, err := event.Compress(event.RawData(h.info()))
+			rd, err := event.Compress(event.RawData(h.info(true)))
 			if err != nil {
 				c.SendError(err)
 			} else {
@@ -445,24 +445,28 @@ func (h *Hub) publishQuit(c Conn, auth *store.Auth) error {
 	return nil
 }
 
-func (h *Hub) info() string {
+func (h *Hub) info(ignoreWriteOnly bool) string {
 
 	h.RLock()
 	defer h.RUnlock()
 
-	ghost := []ConnStatus{}
+	ghost := []*ConnStatus{}
 	for c := range h.g {
-		ghost = append(ghost, c.(*conn).Status())
+		if st := c.(*conn).Status(ignoreWriteOnly); st != nil {
+			ghost = append(ghost, st)
+		}
 	}
 
-	auth := map[string]ConnStatus{}
+	auth := map[string]*ConnStatus{}
 	for name, c := range h.m {
-		auth[name] = c.(*conn).Status()
+		if st := c.(*conn).Status(ignoreWriteOnly); st != nil {
+			auth[name] = st
+		}
 	}
 
 	b, _ := event.Marshal(struct {
-		Auth  map[string]ConnStatus
-		Ghost []ConnStatus
+		Auth  map[string]*ConnStatus
+		Ghost []*ConnStatus
 	}{auth, ghost})
 
 	return string(b)

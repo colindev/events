@@ -48,7 +48,7 @@ type Conn interface {
 type ConnStatus struct {
 	Channel  []event.Event
 	Name     string
-	LastAuth *store.Auth
+	LastAuth *store.Auth `json:",omitempty"`
 	Flag     int
 }
 
@@ -80,12 +80,17 @@ func newConn(c net.Conn, t time.Time) Conn {
 }
 
 // Status non-export
-func (c *conn) Status() ConnStatus {
+func (c *conn) Status(ignoreWriteOnly bool) *ConnStatus {
 	c.RLock()
 	name := c.name
 	flags := c.flags
 	lastAuth := c.lastAuth
 	c.RUnlock()
+
+	// NOTE ignore write only (launcher conn)
+	if ignoreWriteOnly && flags == client.Writable {
+		return nil
+	}
 
 	chs := []event.Event{}
 	c.EachChannels(func(ev event.Event) event.Event {
@@ -93,7 +98,7 @@ func (c *conn) Status() ConnStatus {
 		return ev
 	})
 
-	return ConnStatus{
+	return &ConnStatus{
 		Channel:  chs,
 		Name:     name,
 		LastAuth: lastAuth,
