@@ -16,6 +16,7 @@ import (
 
 var (
 	version  string
+	appName  string
 	env      = &Env{}
 	logFlags = log.LstdFlags | log.Lshortfile
 )
@@ -32,7 +33,7 @@ func init() {
 	}
 
 	env.version = version
-	log.SetPrefix("[" + version + "]")
+	log.SetPrefix(fmt.Sprintf("[%s %s]", version, appName))
 	log.SetFlags(logFlags)
 }
 

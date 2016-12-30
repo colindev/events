@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "github.com/colindev/osenv"
 
 // Env 環境參數
 type Env struct {
@@ -21,21 +21,5 @@ type Env struct {
 }
 
 func (env *Env) String() string {
-	return fmt.Sprintf(`events-driver %s
-	path=%s
-	DEBUG=%t
-	FOLLOW=%s
-	AUTH_DSN=%s
-	EVENT_DSN=%s
-	ADDR=%s
-	GC_DURATION=%s
-	`,
-		env.version,
-		env.path,
-		env.Debug,
-		env.Follow,
-		env.AuthDSN,
-		env.EventDSN,
-		env.Addr,
-		env.GCDuration)
+	return "\n" + osenv.ToString(env)
 }
