@@ -27,15 +27,6 @@ func (chs *channels) Set(ev string) error {
 	return nil
 }
 
-func hash(ev event.Event, rd event.RawData) string {
-
-	s := sha1.New()
-	s.Write(ev.Bytes())
-	s.Write([]byte(":"))
-	s.Write(rd.Bytes())
-	return fmt.Sprintf("%x", s.Sum(nil))
-}
-
 type Line struct {
 	hash                  string
 	name                  event.Event
@@ -101,6 +92,14 @@ func (c *Cache) Append(from string, ev event.Event, rd event.RawData) *Line {
 	return line
 }
 
+func hash(ev event.Event, rd event.RawData) string {
+	s := sha1.New()
+	s.Write(ev.Bytes())
+	s.Write([]byte(":"))
+	s.Write(rd.Bytes())
+	return fmt.Sprintf("%x", s.Sum(nil))
+}
+
 var (
 	version string
 )
@@ -117,6 +116,7 @@ func main() {
 		redisAddr  string
 		eventsAddr string
 		chs        channels
+		igs        channels
 		keep       int
 		reconn     = time.Second * 3
 
@@ -128,6 +128,7 @@ func main() {
 	cli.StringVar(&redisAddr, "redis", ":6379", "redis addr")
 	cli.StringVar(&eventsAddr, "events", ":6300", "events addr")
 	cli.Var(&chs, "event", "watch events")
+	cli.Var(&igs, "ignore", "ignore events")
 	cli.IntVar(&keep, "keep", 50, "keep lines")
 
 	cli.Parse(os.Args[1:])
@@ -146,11 +147,24 @@ func main() {
 		keep: keep,
 	}
 
+	skip := func(ev event.Event) bool {
+		for _, x := range igs {
+			if event.Event(x.(string)).Match(ev) {
+				return true
+			}
+		}
+
+		return false
+	}
+
 	redisListener := redis.NewListener(redis.NewPool(func() (redis.Conn, error) {
 		return redis.Dial("tcp", redisAddr)
 	}, 2))
 
 	redisListener.On("*", func(ev event.Event, rd event.RawData) {
+		if skip(ev) {
+			return
+		}
 		cache.Append("redis", ev, rd)
 	})
 
@@ -158,6 +172,9 @@ func main() {
 		return client.Dial("", eventsAddr)
 	})
 	eventsListener.On("*", func(ev event.Event, rd event.RawData) {
+		if skip(ev) {
+			return
+		}
 		cache.Append("events", ev, rd)
 	})
 
