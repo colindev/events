@@ -22,16 +22,17 @@ type fConn struct {
 func (f *fConn) Receive() (interface{}, error) {
 	return f.r.ReadSlice('\n')
 }
-func (f *fConn) Close() error                          { return nil }
-func (f *fConn) Recover(int64, int64) error            { return nil }
-func (f *fConn) Auth(int) error                        { return nil }
-func (f *fConn) Subscribe(...string) error             { return nil }
-func (f *fConn) Unsubscribe(...string) error           { return nil }
-func (f *fConn) Fire(event.Event, event.RawData) error { return nil }
-func (f *fConn) Ping(string) error                     { return nil }
-func (f *fConn) Info() error                           { return nil }
-func (f *fConn) Conn() net.Conn                        { return nil }
-func (f *fConn) Err() error                            { return nil }
+func (f *fConn) Close() error                                    { return nil }
+func (f *fConn) Recover(int64, int64) error                      { return nil }
+func (f *fConn) Auth(int) error                                  { return nil }
+func (f *fConn) Subscribe(...string) error                       { return nil }
+func (f *fConn) Unsubscribe(...string) error                     { return nil }
+func (f *fConn) Fire(event.Event, event.RawData) error           { return nil }
+func (f *fConn) FireTo(string, event.Event, event.RawData) error { return nil }
+func (f *fConn) Ping(string) error                               { return nil }
+func (f *fConn) Info() error                                     { return nil }
+func (f *fConn) Conn() net.Conn                                  { return nil }
+func (f *fConn) Err() error                                      { return nil }
 
 func TestListener(t *testing.T) {
 	l := New(func() (client.Conn, error) { return nil, nil })

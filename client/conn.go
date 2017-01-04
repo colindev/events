@@ -2,7 +2,6 @@ package client
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -34,6 +33,8 @@ const (
 	CPong byte = '@'
 	// CRecover client 請求過往資料
 	CRecover byte = '>'
+	// CTarget specify receiver
+	CTarget byte = '<'
 	// CInfo 請求 server 資料
 	CInfo byte = '#'
 
@@ -77,8 +78,9 @@ func (r *Reply) String() string {
 
 // Event 包裝事件名稱跟資料
 type Event struct {
-	Name event.Event
-	Data event.RawData
+	Target string // 定傳送目標
+	Name   event.Event
+	Data   event.RawData
 }
 
 // Conn 包裝 net.Conn
@@ -89,6 +91,7 @@ type Conn interface {
 	Subscribe(...string) error
 	Unsubscribe(...string) error
 	Fire(event.Event, event.RawData) error
+	FireTo(string, event.Event, event.RawData) error
 	Ping(string) error
 	Info() error
 	Receive() (interface{}, error)
@@ -148,7 +151,7 @@ func (c *conn) readLine() ([]byte, error) {
 }
 
 func (c *conn) readLen(p []byte) ([]byte, error) {
-	n, err := parseLen(p)
+	n, err := ParseLen(p)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +206,7 @@ func (c *conn) Receive() (ret interface{}, err error) {
 			return
 		}
 
-		eventName, eventData, e := parseEvent(p)
+		eventName, eventData, e := ParseEvent(p)
 		if e != nil {
 			err = e
 			return
@@ -231,14 +234,28 @@ func (c *conn) writeLen(prefix byte, n int) error {
 	return err
 }
 
+func (c *conn) writeTargetAndLen(prefix byte, target string, n int) error {
+	c.w.WriteByte(prefix)
+	c.w.WriteString(target)
+	c.w.WriteByte(':')
+	c.w.WriteString(strconv.Itoa(n))
+	_, err := c.w.Write(EOL)
+	return err
+}
+
 func (c *conn) writeEvent(p []byte) error {
 	c.writeLen(CEvent, len(p))
 	_, err := c.w.Write(p)
 	return err
 }
 
-func (c *conn) Auth(flags int) error {
+func (c *conn) writeEventTo(name string, p []byte) error {
+	c.writeTargetAndLen(CTarget, name, len(p))
+	_, err := c.w.Write(p)
+	return err
+}
 
+func (c *conn) Auth(flags int) error {
 	c.w.WriteByte(CAuth)
 	c.w.WriteString(fmt.Sprintf("%s:%d", c.name, flags))
 	return c.flush()
@@ -272,15 +289,20 @@ func (c *conn) Unsubscribe(chans ...string) error {
 }
 
 func (c *conn) Fire(ev event.Event, rd event.RawData) error {
-	buf := bytes.NewBuffer(ev.Bytes())
-	buf.WriteByte(':')
-	b, err := event.Compress(rd)
+	rd, err := event.Compress(rd)
 	if err != nil {
 		return err
 	}
-	buf.Write(b.Bytes())
+	c.writeEvent(MakeEventStream(ev, rd))
+	return c.flush()
+}
 
-	c.writeEvent(buf.Bytes())
+func (c *conn) FireTo(name string, ev event.Event, rd event.RawData) error {
+	rd, err := event.Compress(rd)
+	if err != nil {
+		return err
+	}
+	c.writeEventTo(name, MakeEventStream(ev, rd))
 	return c.flush()
 }
 
@@ -311,68 +333,4 @@ func (c *conn) flush() error {
 
 func (c *conn) Err() error {
 	return c.err
-}
-
-func parseLen(p []byte) (int64, error) {
-
-	raw := string(p)
-
-	if len(p) == 0 {
-		return -1, errors.New("length error:" + raw)
-	}
-
-	var negate bool
-	if p[0] == '-' {
-		negate = true
-		p = p[1:]
-		if len(p) == 0 {
-			return -1, errors.New("length error:" + raw)
-		}
-	}
-
-	var n int64
-	for _, b := range p {
-
-		if b == '\r' || b == '\n' {
-			break
-		}
-		n *= 10
-		if b < '0' || b > '9' {
-			return -1, errors.New("not number:" + string(b))
-		}
-
-		n += int64(b - '0')
-	}
-
-	if negate {
-		n = -n
-	}
-
-	return n, nil
-}
-
-func parseEvent(p []byte) (ev, data []byte, err error) {
-
-	var sp int
-	box := [30]byte{}
-
-	for i, b := range p {
-		if b == ':' {
-			sp = i
-			break
-		}
-		box[i] = b
-	}
-	ev = box[:sp]
-	data = p[sp+1:]
-
-	if len(ev) > 30 {
-		err = errors.New("event name over 30 char")
-	} else if len(ev) == 0 {
-		err = errors.New("event name is empty")
-	} else if len(data) == 0 {
-		err = errors.New("event data empty")
-	}
-
-	return
 }

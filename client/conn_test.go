@@ -199,16 +199,6 @@ func TestConn_ReceiveEvent(t *testing.T) {
 	}
 }
 
-func TestParseLen(t *testing.T) {
-	n, err := parseLen([]byte("12345678987654321"))
-	if err != nil {
-		t.Error(err)
-	}
-	if n != 12345678987654321 {
-		t.Error("parseLen error:", n)
-	}
-}
-
 func BenchmarkParseEvent(b *testing.B) {
 
 	// 直接利用原本機制產生測試用資料
@@ -220,12 +210,12 @@ func BenchmarkParseEvent(b *testing.B) {
 	c.Fire(eventName, eventData)
 
 	line, _ := c.readLine()
-	n, _ := parseLen(line[1:])
+	n, _ := ParseLen(line[1:])
 	p := make([]byte, n)
 	io.ReadFull(c.r, p)
 
 	for i := 0; i < b.N; i++ {
-		parseEvent(p)
+		ParseEvent(p)
 	}
 }
 

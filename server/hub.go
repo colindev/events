@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"crypto/sha1"
 	"fmt"
 	"log"
 	"net"
@@ -148,6 +146,7 @@ func (h *Hub) quitAll(t time.Time) {
 	}
 }
 
+// 為了方便從資料庫取出廣播,不要改變第一參數型別
 func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 
 	h.RLock()
@@ -172,10 +171,7 @@ func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 	}
 	h.RUnlock()
 
-	eventName, eventData, err := parseEvent([]byte(e.Raw))
-	// just display
-	rd, err := event.Uncompress(eventData)
-	h.Println("publish:", string(eventName), rd, err)
+	// broadcast
 	var cnt int
 	for _, c := range conns {
 		cnt++
@@ -184,6 +180,18 @@ func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 	}
 
 	return cnt
+}
+
+func (h *Hub) sendEventTo(app string, e *store.Event) error {
+	h.RLock()
+	c := h.m[app]
+	h.RUnlock()
+
+	if c != nil && c.IsListening(e.Name) {
+		return c.SendEvent(e.Raw)
+	}
+
+	return nil
 }
 
 func (h *Hub) recover(c Conn, since, until int64) error {
@@ -264,7 +272,7 @@ func (h *Hub) handle(c Conn) {
 	h.Println(c.RemoteAddr(), " connect")
 
 	// 發送連線事件
-	c.SendEvent(string(makeEventStream(event.Connected.Bytes(), client.OK)))
+	c.SendEvent(string(client.MakeEventStream(event.Connected, client.OK)))
 
 	// 廣播具名客端 Join 事件
 	h.publishJoin(c)
@@ -283,16 +291,7 @@ func (h *Hub) handle(c Conn) {
 		switch line[0] {
 		// case client.CAuth: 只做單次登入
 		case client.CRecover:
-			var (
-				since, until int64
-			)
-			// TODO 先可以跑
-			// 後面改 byte 處理
-			s := strings.SplitN(string(line[1:]), ":", 2)
-			since, _ = strconv.ParseInt(s[0], 10, 64)
-			if len(s) == 2 {
-				until, _ = strconv.ParseInt(s[1], 10, 64)
-			}
+			since, until := client.ParseSinceUntil(line[1:])
 
 			if err := h.recover(c, since, until); err != nil {
 				h.Printf("recover since=%d until=%d error: %v\n", since, until, err)
@@ -332,7 +331,31 @@ func (h *Hub) handle(c Conn) {
 			if err != nil {
 				c.SendError(err)
 			} else {
-				c.SendEvent(string(makeEventStream(event.Info.Bytes(), rd)))
+				c.SendEvent(string(client.MakeEventStream(event.Info, rd)))
+			}
+
+		case client.CTarget:
+			target, p, err := c.ReadTargetAndLen(line[1:])
+			if err != nil {
+				h.Println(err)
+				c.SendError(err)
+				return
+			}
+
+			if !c.Writable() {
+				h.Printf("this (%p)%#v has no writable flag, event droped\n", c.(*conn), c)
+				continue
+			}
+
+			eventName, eventData, err := client.ParseEvent(p)
+			s, _ := event.Uncompress(eventData)
+			h.Printf("from %s to %s: %s %s %v", c.RemoteAddr(), target, eventName, s, err)
+			// 指定傳送不儲存
+			if err == nil {
+				storeEvent := client.MakeEvent(eventName, eventData, time.Now())
+				h.sendEventTo(target, storeEvent)
+			} else {
+				c.SendError(err)
 			}
 
 		case client.CEvent:
@@ -348,11 +371,11 @@ func (h *Hub) handle(c Conn) {
 				continue
 			}
 
-			eventName, eventData, err := parseEvent(p)
+			eventName, eventData, err := client.ParseEvent(p)
 			s, _ := event.Uncompress(eventData)
-			h.Println("receive:", string(eventName), string(s), err)
+			h.Printf("from %s broadcast: %s %s %v", c.RemoteAddr(), eventName, s, err)
 			if err == nil {
-				storeEvent := makeEvent(eventName, eventData, time.Now())
+				storeEvent := client.MakeEvent(eventName, eventData, time.Now())
 				h.store.Events <- storeEvent
 				h.publish(storeEvent)
 			} else {
@@ -421,7 +444,7 @@ func (h *Hub) publishJoin(c Conn) error {
 	if err != nil {
 		return err
 	}
-	storeEvent := makeEvent(event.Join.Bytes(), rdCompressed, time.Unix(connAuth.ConnectedAt, 0))
+	storeEvent := client.MakeEvent(event.Join, rdCompressed, time.Unix(connAuth.ConnectedAt, 0))
 	h.publish(storeEvent, c)
 
 	return nil
@@ -439,7 +462,7 @@ func (h *Hub) publishQuit(c Conn, auth *store.Auth) error {
 	if err != nil {
 		return err
 	}
-	storeEvent := makeEvent(event.Leave.Bytes(), rdCompressed, time.Unix(auth.DisconnectedAt, 0))
+	storeEvent := client.MakeEvent(event.Leave, rdCompressed, time.Unix(auth.DisconnectedAt, 0))
 	h.publish(storeEvent, c)
 
 	return nil
@@ -470,47 +493,4 @@ func (h *Hub) info(ignoreWriteOnly bool) string {
 	}{auth, ghost})
 
 	return string(b)
-}
-
-func makeEventStream(event, data []byte) []byte {
-	buf := bytes.NewBuffer(event)
-	buf.WriteByte(':')
-	buf.Write(data)
-
-	return buf.Bytes()
-}
-
-func makeEvent(ev, data []byte, t time.Time) *store.Event {
-	p := makeEventStream(ev, data)
-	e := event.Event(string(ev))
-	return &store.Event{
-		Hash:       fmt.Sprintf("%x", sha1.Sum(p)),
-		Name:       e.String(),
-		Prefix:     e.Type(),
-		Length:     len(p),
-		Raw:        string(p),
-		ReceivedAt: t.Unix(),
-	}
-}
-
-func min(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-
-	return b
-}
-
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-
-	return b
-}
-
-func isBetween(a, b, c int64) bool {
-	n, m := min(b, c), max(b, c)
-
-	return a >= n && a <= m
 }

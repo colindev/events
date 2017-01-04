@@ -13,6 +13,7 @@ type (
 	// Launcher responsible for event data
 	Launcher interface {
 		Fire(event.Event, event.RawData) error
+		FireTo(string, event.Event, event.RawData) error
 		Close() error
 	}
 
@@ -36,11 +37,21 @@ func New(pool client.Pool) Launcher {
 	return l
 }
 
-func (l *launcher) Fire(ev event.Event, rd event.RawData) (err error) {
+func (l *launcher) Fire(ev event.Event, rd event.RawData) error {
 
 	l.c <- &client.Event{
 		Name: ev,
 		Data: rd,
+	}
+
+	return nil
+}
+
+func (l *launcher) FireTo(target string, ev event.Event, rd event.RawData) error {
+	l.c <- &client.Event{
+		Target: target,
+		Name:   ev,
+		Data:   rd,
 	}
 
 	return nil
@@ -52,13 +63,23 @@ func (l *launcher) reduce(keep int, du time.Duration) {
 	conn.Auth(client.Writable)
 	// 保留最後 n 筆資料
 	cache := list.New()
+	fire := func(c client.Conn, ca *client.Event) error {
+		var err error
+		switch ca.Target {
+		case "":
+			err = c.Fire(ca.Name, ca.Data)
+		default:
+			err = c.FireTo(ca.Target, ca.Name, ca.Data)
+		}
+		return err
+	}
 	for ca := range l.c {
-		cache.PushBack(ca)
 		for cache.Len() > keep {
 			cache.Remove(cache.Front())
 		}
 		for {
-			if err := conn.Fire(ca.Name, ca.Data); err == nil {
+			if err := fire(conn, ca); err == nil {
+				cache.PushBack(ca)
 				break
 			}
 			conn.Close()
@@ -72,8 +93,7 @@ func (l *launcher) reduce(keep int, du time.Duration) {
 				// 重送斷線前 n 筆資料
 				el := cache.Front()
 				for el != nil {
-					pack := el.Value.(*client.Event)
-					conn.Fire(pack.Name, pack.Data)
+					fire(conn, el.Value.(*client.Event))
 					el = el.Next()
 				}
 			}

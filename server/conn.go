@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -33,6 +32,7 @@ type Conn interface {
 	EachChannels(fs ...func(event.Event) event.Event) map[event.Event]bool
 	ReadLine() ([]byte, error)
 	ReadLen([]byte) ([]byte, error)
+	ReadTargetAndLen([]byte) (string, []byte, error)
 	Subscribe([]byte) (string, error)
 	Unsubscribe([]byte) (string, error)
 	IsListening(string) bool
@@ -188,19 +188,37 @@ func (c *conn) ReadLine() ([]byte, error) {
 	return b[:i], nil
 }
 
-func (c *conn) ReadLen(p []byte) ([]byte, error) {
-	n, err := parseLen(p)
+func (c *conn) ReadLen(p []byte) (b []byte, err error) {
+	var n int64
+	n, err = client.ParseLen(p)
 	if err != nil {
-		return nil, err
+		return
 	}
-	buf := make([]byte, n)
-	_, err = io.ReadFull(c.r, buf)
+	b = make([]byte, n)
+	_, err = io.ReadFull(c.r, b)
 	if err != nil {
-		return nil, err
+		return
 	}
 	// 讀取最後的換行
 	c.ReadLine()
-	return buf, nil
+	return
+}
+
+func (c *conn) ReadTargetAndLen(p []byte) (target string, b []byte, err error) {
+	var n int64
+	target, n, err = client.ParseTargetAndLen(p)
+	if err != nil {
+		return
+	}
+
+	b = make([]byte, n)
+	_, err = io.ReadFull(c.r, b)
+	if err != nil {
+		return
+	}
+
+	c.ReadLine()
+	return
 }
 
 func (c *conn) Subscribe(p []byte) (string, error) {
@@ -356,68 +374,4 @@ func (c *conn) SendPong(ping []byte) error {
 func (c *conn) SendEvent(e string) error {
 	c.writeEvent(e)
 	return c.flush()
-}
-
-func parseLen(p []byte) (int64, error) {
-
-	raw := string(p)
-
-	if len(p) == 0 {
-		return -1, errors.New("length error:" + raw)
-	}
-
-	var negate bool
-	if p[0] == '-' {
-		negate = true
-		p = p[1:]
-		if len(p) == 0 {
-			return -1, errors.New("length error:" + raw)
-		}
-	}
-
-	var n int64
-	for _, b := range p {
-
-		if b == '\r' || b == '\n' {
-			break
-		}
-		n *= 10
-		if b < '0' || b > '9' {
-			return -1, errors.New("not number:" + string(b))
-		}
-
-		n += int64(b - '0')
-	}
-
-	if negate {
-		n = -n
-	}
-
-	return n, nil
-}
-
-func parseEvent(p []byte) (ev, data []byte, err error) {
-
-	var sp int
-	box := [30]byte{}
-
-	for i, b := range p {
-		if b == ':' {
-			sp = i
-			break
-		}
-		box[i] = b
-	}
-	ev = box[:sp]
-	data = p[sp+1:]
-
-	if len(ev) > 30 {
-		err = errors.New("event name over 30 char")
-	} else if len(ev) == 0 {
-		err = errors.New("event name is empty")
-	} else if len(data) == 0 {
-		err = errors.New("event data empty")
-	}
-
-	return
 }

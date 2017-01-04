@@ -39,6 +39,7 @@ func main() {
 		handler event.Handler
 
 		appName       string
+		target        string
 		listenAddr    string
 		listenEvents  = channels{}
 		launcherEvent string
@@ -55,6 +56,7 @@ func main() {
 	cli.BoolVar(&showVer, "v", false, "version")
 	cli.BoolVar(&showInfo, "i", false, "show server info")
 	cli.StringVar(&appName, "app", "", "app name")
+	cli.StringVar(&target, "to", "", "fire to specify app")
 	cli.StringVar(&listenAddr, "server", "127.0.0.1:6300", "listen event address")
 	cli.StringVar(&launcherEvent, "fire", "", "fire event {name}:{data}")
 	cli.Var(&listenEvents, "event", "listen events")
@@ -75,7 +77,12 @@ func main() {
 		la := launcher.New(client.NewPool(func() (client.Conn, error) {
 			return client.Dial("", listenAddr)
 		}, 30))
-		err := la.Fire(event.Event(ev[0]), event.RawData(ev[1]))
+		var err error
+		if target == "" {
+			err = la.Fire(event.Event(ev[0]), event.RawData(ev[1]))
+		} else {
+			err = la.FireTo(target, event.Event(ev[0]), event.RawData(ev[1]))
+		}
 		if verbose {
 			log.Printf("fire: %v error(%v)\n", ev, err)
 		}

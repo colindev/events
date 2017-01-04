@@ -141,7 +141,7 @@ func (p *pool) put(c Conn) error {
 	return c.Close()
 }
 
-// 只能 Auth, Fire, Close, Receive, Ping, Info
+// 只能 Auth, Fire, FireTo, Close, Receive, Ping, Info
 // 不處理其他方法,省略清除原本通訊設定
 type maskConn struct {
 	p *pool
@@ -150,6 +150,9 @@ type maskConn struct {
 
 func (m *maskConn) Fire(ev event.Event, rd event.RawData) error {
 	return m.c.Fire(ev, rd)
+}
+func (m *maskConn) FireTo(name string, ev event.Event, rd event.RawData) error {
+	return m.c.FireTo(name, ev, rd)
 }
 func (m *maskConn) Ping(s string) error {
 	return m.c.Ping(s)
@@ -185,14 +188,15 @@ func (m *maskConn) Err() error {
 // errConn
 type errConn struct{ err error }
 
-func (err *errConn) Fire(event.Event, event.RawData) error { return err.err }
-func (err *errConn) Receive() (interface{}, error)         { return nil, err.err }
-func (err *errConn) Close() error                          { return err.err }
-func (err *errConn) Auth(int) error                        { return err.err }
-func (err *errConn) Ping(string) error                     { return err.err }
-func (err *errConn) Info() error                           { return err.err }
-func (err *errConn) Recover(int64, int64) error            { return err.err }
-func (err *errConn) Subscribe(...string) error             { return err.err }
-func (err *errConn) Unsubscribe(...string) error           { return err.err }
-func (err *errConn) Conn() net.Conn                        { return nil }
-func (err *errConn) Err() error                            { return err.err }
+func (err *errConn) Fire(event.Event, event.RawData) error           { return err.err }
+func (err *errConn) FireTo(string, event.Event, event.RawData) error { return err.err }
+func (err *errConn) Receive() (interface{}, error)                   { return nil, err.err }
+func (err *errConn) Close() error                                    { return err.err }
+func (err *errConn) Auth(int) error                                  { return err.err }
+func (err *errConn) Ping(string) error                               { return err.err }
+func (err *errConn) Info() error                                     { return err.err }
+func (err *errConn) Recover(int64, int64) error                      { return err.err }
+func (err *errConn) Subscribe(...string) error                       { return err.err }
+func (err *errConn) Unsubscribe(...string) error                     { return err.err }
+func (err *errConn) Conn() net.Conn                                  { return nil }
+func (err *errConn) Err() error                                      { return err.err }

@@ -23,6 +23,10 @@ func (m *fake) Fire(ev event.Event, rd event.RawData) error {
 	m.fn(m.Fire, ev, rd)
 	return nil
 }
+func (m *fake) FireTo(name string, ev event.Event, rd event.RawData) error {
+	m.fn(m.FireTo, name, ev, rd)
+	return nil
+}
 func (m *fake) Ping(s string) error {
 	m.fn(m.Ping, s)
 	return nil
