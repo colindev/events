@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
@@ -45,6 +47,7 @@ func main() {
 		launcherEvent string
 		recoverSince  int64
 		recoverUntil  int64
+		interactive   bool
 		showInfo      bool
 		showVer       bool
 		verbose       bool
@@ -55,6 +58,7 @@ func main() {
 	cli.BoolVar(&verbose, "V", false, "verbose")
 	cli.BoolVar(&showVer, "v", false, "version")
 	cli.BoolVar(&showInfo, "i", false, "show server info")
+	cli.BoolVar(&interactive, "I", false, "interactive mode")
 	cli.StringVar(&appName, "app", "", "app name")
 	cli.StringVar(&target, "to", "", "fire to specify app")
 	cli.StringVar(&listenAddr, "server", "127.0.0.1:6300", "listen event address")
@@ -72,11 +76,74 @@ func main() {
 		os.Exit(0)
 	}
 
-	// launcher
-	if ev := strings.SplitN(launcherEvent, ":", 2); len(ev) == 2 {
-		la := launcher.New(client.NewPool(func() (client.Conn, error) {
+	var (
+		la launcher.Launcher
+		li = listener.New(func() (client.Conn, error) {
+			return client.Dial(appName, listenAddr)
+		})
+	)
+
+	if launcherEvent != "" || interactive {
+		la = launcher.New(client.NewPool(func() (client.Conn, error) {
 			return client.Dial("", listenAddr)
 		}, 30))
+	}
+
+	if interactive {
+		go func() {
+			stdin := bufio.NewReader(os.Stdin)
+			for {
+				line, _, err := stdin.ReadLine()
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+
+				if len(line) == 0 {
+					continue
+				}
+
+				i := bytes.IndexByte(line, ' ')
+				var cmd string
+				if i == -1 {
+					cmd = string(line)
+				} else {
+					cmd = string(line[:i])
+				}
+				switch strings.ToUpper(cmd) {
+				case "FIRE":
+					ev, rd, err := client.ParseEvent(line[i+1:])
+					if err != nil {
+						fmt.Println(err)
+						continue
+					}
+					la.Fire(ev, rd)
+				case "FIRETO":
+					var (
+						target string
+						b      []byte
+					)
+					_, err := fmt.Sscan(string(line[i+1:]), &target, &b)
+					if err != nil {
+						fmt.Println(err)
+						continue
+					}
+					ev, rd, err := client.ParseEvent(b)
+					if err != nil {
+						fmt.Println(err)
+						continue
+					}
+					la.FireTo(target, ev, rd)
+				default:
+					fmt.Println("unkown command")
+				}
+
+			}
+		}()
+	}
+
+	// launcher
+	if ev := strings.SplitN(launcherEvent, ":", 2); len(ev) == 2 {
 		var err error
 		if target == "" {
 			err = la.Fire(event.Event(ev[0]), event.RawData(ev[1]))
@@ -91,9 +158,6 @@ func main() {
 
 	// listener
 	quit := make(chan os.Signal, 1)
-	li := listener.New(func() (client.Conn, error) {
-		return client.Dial(appName, listenAddr)
-	})
 	args := cli.Args()
 	switch len(args) {
 	case 0:
