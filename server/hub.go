@@ -27,6 +27,9 @@ type Hub struct {
 	sync.WaitGroup
 
 	store *store.Store
+
+	// log verbose
+	verbose bool
 	*log.Logger
 }
 
@@ -44,10 +47,11 @@ func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 	}
 
 	return &Hub{
-		m:      map[string]Conn{},
-		g:      map[Conn]bool{},
-		store:  sto,
-		Logger: logger,
+		m:       map[string]Conn{},
+		g:       map[Conn]bool{},
+		store:   sto,
+		Logger:  logger,
+		verbose: env.Debug,
 	}, nil
 }
 
@@ -259,14 +263,16 @@ func (h *Hub) handle(c Conn) {
 		h.Println(c.RemoteAddr(), " disconnect")
 	}()
 
-	// 登入的第一個訊息一定是登入訊息
-	line, err := c.ReadLine()
-	if err != nil {
-		return
-	} else if err := h.auth(c, line[1:]); err != nil {
-		h.Println(err)
-		c.SendError(err)
-		return
+	if !c.IsAuthed() {
+		// 登入的第一個訊息一定是登入訊息
+		line, err := c.ReadLine()
+		if err != nil {
+			return
+		} else if err := h.auth(c, line[1:]); err != nil {
+			h.Println(err)
+			c.SendError(err)
+			return
+		}
 	}
 
 	h.Println(c.RemoteAddr(), " connect")
@@ -344,6 +350,9 @@ func (h *Hub) handle(c Conn) {
 
 			if !c.Writable() {
 				h.Printf("this (%p)%#v has no writable flag, event droped\n", c.(*conn), c)
+				if h.verbose {
+					h.Printf("\n--- payload\n%s\n---", p)
+				}
 				continue
 			}
 
@@ -368,6 +377,11 @@ func (h *Hub) handle(c Conn) {
 
 			if !c.Writable() {
 				h.Printf("this (%p)%#v has no writable flag, event droped\n", c.(*conn), c)
+				if h.verbose {
+					eventName, eventData, err := client.ParseEvent(p)
+					s, _ := event.Uncompress(eventData)
+					h.Printf("\n--- payload\n%s %s\n%v\n---", eventName, s, err)
+				}
 				continue
 			}
 

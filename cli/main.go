@@ -158,6 +158,8 @@ func main() {
 						continue
 					}
 					la.FireTo(target, ev, rd)
+				case "INFO":
+					li.Info()
 				default:
 					fmt.Println("unkown command")
 				}
