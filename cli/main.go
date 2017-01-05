@@ -210,7 +210,15 @@ func main() {
 	}
 
 	for _, ev := range listenEvents {
-		li.On(event.Event(ev.(string)), handler)
+		evName := event.Event(ev.(string))
+		li.On(evName, func(ev event.Event, rd event.RawData) {
+			switch ev {
+			// 忽略上面有特別處理的事件
+			case event.Info:
+				return
+			}
+			handler(ev, rd)
+		})
 	}
 
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
