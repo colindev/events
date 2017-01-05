@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -29,6 +30,29 @@ func (chs *channels) Set(ev string) error {
 	return nil
 }
 
+// Date of since until
+type Date time.Time
+
+func (d *Date) String() string {
+	return time.Time(*d).String()
+}
+
+// Set implement for flag
+func (d *Date) Set(s string) error {
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err == nil {
+		*d = Date(time.Unix(i, 0))
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err == nil {
+		*d = Date(t)
+		return nil
+	}
+
+	return fmt.Errorf("must be RFC3339 %s or timestamp", time.RFC3339)
+}
+
 var version string
 
 func init() {
@@ -45,8 +69,8 @@ func main() {
 		listenAddr    string
 		listenEvents  = channels{}
 		launcherEvent string
-		recoverSince  int64
-		recoverUntil  int64
+		recoverSince  = Date(time.Unix(0, 0))
+		recoverUntil  = Date(time.Unix(0, 0))
 		interactive   bool
 		showInfo      bool
 		showVer       bool
@@ -64,8 +88,8 @@ func main() {
 	cli.StringVar(&listenAddr, "server", "127.0.0.1:6300", "listen event address")
 	cli.StringVar(&launcherEvent, "fire", "", "fire event {name}:{data}")
 	cli.Var(&listenEvents, "event", "listen events")
-	cli.Int64Var(&recoverSince, "since", 0, "request recover since")
-	cli.Int64Var(&recoverUntil, "until", 0, "request recover until")
+	cli.Var(&recoverSince, "since", fmt.Sprintf("request recover since, use RFC3339 %s or timestamp", time.RFC3339))
+	cli.Var(&recoverUntil, "until", fmt.Sprintf("request recover until, use RFC3339 %s or timestamp", time.RFC3339))
 	cli.Parse(os.Args[1:])
 
 	if verbose {
@@ -187,8 +211,10 @@ func main() {
 
 	li.On(event.Ready, func(ev event.Event, _ event.RawData) {
 		// Recover
-		log.Printf("recover since=%d until=%d\n", recoverSince, recoverUntil)
-		li.Recover(recoverSince, recoverUntil)
+		since := time.Time(recoverSince).Unix()
+		until := time.Time(recoverUntil).Unix()
+		log.Printf("recover since=%d until=%d\n", since, until)
+		li.Recover(since, until)
 	}).On(event.Connecting, func(ev event.Event, _ event.RawData) {
 		// Connecting
 		log.Println(ev)
