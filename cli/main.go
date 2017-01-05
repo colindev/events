@@ -201,6 +201,10 @@ func main() {
 			handler(ev, rd)
 			quit <- syscall.SIGQUIT
 		})
+	} else {
+		li.On(event.Info, func(ev event.Event, rd event.RawData) {
+			handler(ev, rd)
+		})
 	}
 
 	for _, ev := range listenEvents {
