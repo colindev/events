@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -268,4 +269,83 @@ func TestConn_writeError(t *testing.T) {
 	w, bw, c := createWBWC()
 	c.writeError(err)
 	checkBuffer("writeError", t, w, bw, expect)
+}
+
+func BenchmarkConn(b *testing.B) {
+
+	//r, w := io.Pipe()
+	//defer r.Close()
+	//defer w.Close()
+
+	//c := &conn{
+	//	conn: &fake.NetConn{},
+	//	w:    bufio.NewWriter(w),
+	//	r:    bufio.NewReader(r),
+	//}
+
+	var (
+		sc = make(chan Conn, 1)
+		cc = make(chan client.Conn, 1)
+	)
+	go func() {
+		addr, err := net.ResolveTCPAddr("tcp", ":9876")
+		if err != nil {
+			b.Error(err)
+			b.Skip()
+		}
+		ls, err := net.ListenTCP("tcp", addr)
+		if err != nil {
+			b.Error(err)
+			b.Skip()
+		}
+
+		x, err := ls.Accept()
+		if err != nil {
+			b.Error(err)
+			b.Skip()
+		}
+
+		sc <- newConn(x, time.Now())
+
+	}()
+
+	for {
+		time.Sleep(time.Millisecond * 500)
+		c, err := client.Dial("", ":9876")
+		if err == nil {
+			cc <- c
+			break
+		}
+	}
+
+	go func() {
+		c := <-sc
+		sc <- c
+		for i := 0; i < b.N; i++ {
+			c.SendEvent("aaa.a:1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111")
+		}
+	}()
+
+	go func() {
+		c := <-sc
+		sc <- c
+		for i := 0; i < b.N; i++ {
+			c.SendEvent("bbb.b:222222222222222222")
+		}
+	}()
+
+	c := <-cc
+
+	for i := 0; i < b.N*2; i++ {
+		ret, err := c.Receive()
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			b.Error(err)
+			b.Skip()
+		}
+
+		b.Log(ret)
+	}
 }
