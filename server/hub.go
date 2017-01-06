@@ -255,12 +255,14 @@ func (h *Hub) handle(c Conn) {
 
 	h.Add(1)
 	defer func() {
-		h.publishQuit(c, h.quit(c, time.Now()))
+		if pub, err := h.publishQuit(c, h.quit(c, time.Now())); pub {
+			h.Printf("broadcast leave: %s app(%s) %v\n", c.RemoteAddr(), c.GetName(), err)
+		}
 		h.Done()
 		if err := c.Err(); err != nil {
 			h.Println("conn error:", err)
 		}
-		h.Println(c.RemoteAddr(), " disconnect")
+		h.Printf("%s app(%s) disconnected\n", c.RemoteAddr(), c.GetName())
 	}()
 
 	if !c.IsAuthed() {
@@ -275,13 +277,19 @@ func (h *Hub) handle(c Conn) {
 		}
 	}
 
-	h.Println(c.RemoteAddr(), " connect")
+	h.Printf("%s app(%s) connected\n", c.RemoteAddr(), c.GetName())
 
 	// 發送連線事件
 	c.SendEvent(string(client.MakeEventStream(event.Connected, client.OK)))
 
 	// 廣播具名客端 Join 事件
-	h.publishJoin(c)
+	go func() {
+		// NOTE join event 可能會快過 subscribe
+		time.Sleep(time.Second * 3)
+		if pub, err := h.publishJoin(c); pub {
+			h.Printf("broadcast join: %s app(%s) %v\n", c.RemoteAddr(), c.GetName(), err)
+		}
+	}()
 
 	for {
 		line, err := c.ReadLine()
@@ -358,7 +366,7 @@ func (h *Hub) handle(c Conn) {
 
 			eventName, eventData, err := client.ParseEvent(p)
 			s, _ := event.Uncompress(eventData)
-			h.Printf("from %s to %s: %s %s %v", c.RemoteAddr(), target, eventName, s, err)
+			h.Printf("from %s to %s: %s %s %v\n", c.RemoteAddr(), target, eventName, s, err)
 			// 指定傳送不儲存
 			if err == nil {
 				storeEvent := client.MakeEvent(eventName, eventData, time.Now())
@@ -387,7 +395,7 @@ func (h *Hub) handle(c Conn) {
 
 			eventName, eventData, err := client.ParseEvent(p)
 			s, _ := event.Uncompress(eventData)
-			h.Printf("from %s broadcast: %s %s %v", c.RemoteAddr(), eventName, s, err)
+			h.Printf("from %s broadcast: %s %s %v\n", c.RemoteAddr(), eventName, s, err)
 			if err == nil {
 				storeEvent := client.MakeEvent(eventName, eventData, time.Now())
 				h.store.Events <- storeEvent
@@ -444,42 +452,42 @@ func (h *Hub) ListenAndServe(quit <-chan os.Signal, addr string, others ...Conn)
 	return err
 }
 
-func (h *Hub) publishJoin(c Conn) error {
+func (h *Hub) publishJoin(c Conn) (pub bool, err error) {
 
 	if !c.HasName() {
-		return nil
+		return
 	}
 	connAuth := c.GetAuth()
 	rd, err := event.Marshal(connAuth)
 	if err != nil {
-		return err
+		return
 	}
 	rdCompressed, err := event.Compress(rd)
 	if err != nil {
-		return err
+		return
 	}
 	storeEvent := client.MakeEvent(event.Join, rdCompressed, time.Unix(connAuth.ConnectedAt, 0))
 	h.publish(storeEvent, c)
 
-	return nil
+	return true, err
 }
 
-func (h *Hub) publishQuit(c Conn, auth *store.Auth) error {
+func (h *Hub) publishQuit(c Conn, auth *store.Auth) (pub bool, err error) {
 	if !c.HasName() {
-		return nil
+		return
 	}
 	rd, err := event.Marshal(auth)
 	if err != nil {
-		return err
+		return
 	}
 	rdCompressed, err := event.Compress(rd)
 	if err != nil {
-		return err
+		return
 	}
 	storeEvent := client.MakeEvent(event.Leave, rdCompressed, time.Unix(auth.DisconnectedAt, 0))
 	h.publish(storeEvent, c)
 
-	return nil
+	return true, err
 }
 
 func (h *Hub) info(ignoreWriteOnly bool) string {
