@@ -305,8 +305,10 @@ func (c *conn) Close(err error) error {
 	return err
 }
 
-func (c *conn) flush() error {
-	c.w.Write(client.EOL)
+func (c *conn) flush(p []byte) error {
+	c.Lock()
+	defer c.Unlock()
+	c.w.Write(p)
 	if err := c.w.Flush(); err != nil {
 		return c.Close(err)
 	}
@@ -314,64 +316,26 @@ func (c *conn) flush() error {
 	return nil
 }
 
-func (c *conn) writeLen(prefix byte, n int) error {
-
-	i := len(c.lenBox) - 1
-	for {
-		c.lenBox[i] = byte('0' + n%10)
-		i--
-		n = n / 10
-		if n == 0 {
-			break
-		}
-	}
-
-	c.w.WriteByte(prefix)
-	c.w.Write(c.lenBox[i+1:])
-	_, err := c.w.Write(client.EOL)
-	return err
-}
-
-func (c *conn) writeReply(m string) error {
-	c.w.WriteByte(client.CReply)
-	_, err := c.w.WriteString(m)
-	return err
-}
-
-func (c *conn) writeError(err error) error {
-	c.writeLen(client.CErr, len(err.Error()))
-	_, err = c.w.WriteString(err.Error())
-	return err
-}
-
-func (c *conn) writePong(ping []byte) error {
-	c.writeLen(client.CPong, len(ping))
-	_, err := c.w.Write(ping)
-	return err
-}
-
-func (c *conn) writeEvent(e string) error {
-	c.writeLen(client.CEvent, len(e))
-	_, err := c.w.WriteString(e)
-	return err
-}
-
 func (c *conn) SendError(err error) error {
-	c.writeError(err)
-	return c.flush()
+	buf := makeError(err)
+	buf.Write(client.EOL)
+	return c.flush(buf.Bytes())
 }
 
 func (c *conn) SendReply(m string) error {
-	c.writeReply(m)
-	return c.flush()
+	buf := makeReply(m)
+	buf.Write(client.EOL)
+	return c.flush(buf.Bytes())
 }
 
 func (c *conn) SendPong(ping []byte) error {
-	c.writePong(ping)
-	return c.flush()
+	buf := makePong(ping)
+	buf.Write(client.EOL)
+	return c.flush(buf.Bytes())
 }
 
 func (c *conn) SendEvent(e string) error {
-	c.writeEvent(e)
-	return c.flush()
+	buf := makeEvent(e)
+	buf.Write(client.EOL)
+	return c.flush(buf.Bytes())
 }

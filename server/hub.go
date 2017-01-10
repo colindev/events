@@ -153,7 +153,8 @@ func (h *Hub) quitAll(t time.Time) {
 // 為了方便從資料庫取出廣播,不要改變第一參數型別
 func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 
-	h.RLock()
+	h.Lock()
+	defer h.Unlock()
 	var conns = []Conn{}
 	var ignores = map[Conn]bool{}
 
@@ -173,7 +174,6 @@ func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 			conns = append(conns, c)
 		}
 	}
-	h.RUnlock()
 
 	// broadcast
 	var cnt int

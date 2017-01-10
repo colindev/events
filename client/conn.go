@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -228,64 +227,39 @@ func (c *conn) Receive() (ret interface{}, err error) {
 }
 
 func (c *conn) writeLen(prefix byte, n int) error {
-	c.w.WriteByte(prefix)
-	c.w.WriteString(strconv.Itoa(n))
-	_, err := c.w.Write(EOL)
-	return err
+	return WriteLen(c.w, prefix, n)
 }
 
 func (c *conn) writeTargetAndLen(prefix byte, target string, n int) error {
-	c.w.WriteByte(prefix)
-	c.w.WriteString(target)
-	c.w.WriteByte(':')
-	c.w.WriteString(strconv.Itoa(n))
-	_, err := c.w.Write(EOL)
-	return err
+	return WriteTargetAndLen(c.w, prefix, target, n)
 }
 
 func (c *conn) writeEvent(p []byte) error {
-	c.writeLen(CEvent, len(p))
-	_, err := c.w.Write(p)
-	return err
+	return WriteEvent(c.w, p)
 }
 
 func (c *conn) writeEventTo(name string, p []byte) error {
-	c.writeTargetAndLen(CTarget, name, len(p))
-	_, err := c.w.Write(p)
-	return err
+	return WriteEventTo(c.w, name, p)
 }
 
 func (c *conn) Auth(flags int) error {
-	c.w.WriteByte(CAuth)
-	c.w.WriteString(fmt.Sprintf("%s:%d", c.name, flags))
-	return c.flush()
+	WriteAuth(c.w, c.name, flags)
+	return c.flush(EOL)
 }
 
 func (c *conn) Recover(since, until int64) error {
-	c.w.WriteByte(CRecover)
-	c.w.WriteString(strconv.FormatInt(since, 10) + ":" + strconv.FormatInt(until, 10))
-	return c.flush()
+	WriteRecover(c.w, since, until)
+	return c.flush(EOL)
 }
 
 func (c *conn) Subscribe(chans ...string) error {
-
-	for _, ch := range chans {
-		c.w.WriteByte(CAddChan)
-		c.w.WriteString(ch)
-		c.w.Write(EOL)
-	}
-
-	return c.w.Flush()
+	WriteSubscribe(c.w, chans...)
+	return c.flush(nil)
 }
 
 func (c *conn) Unsubscribe(chans ...string) error {
-	for _, ch := range chans {
-		c.w.WriteByte(CDelChan)
-		c.w.WriteString(ch)
-		c.w.Write(EOL)
-	}
-
-	return c.w.Flush()
+	WriteUnsubscribe(c.w, chans...)
+	return c.flush(nil)
 }
 
 func (c *conn) Fire(ev event.Event, rd event.RawData) error {
@@ -293,8 +267,8 @@ func (c *conn) Fire(ev event.Event, rd event.RawData) error {
 	if err != nil {
 		return err
 	}
-	c.writeEvent(MakeEventStream(ev, rd))
-	return c.flush()
+	WriteEvent(c.w, MakeEventStream(ev, rd))
+	return c.flush(EOL)
 }
 
 func (c *conn) FireTo(name string, ev event.Event, rd event.RawData) error {
@@ -302,25 +276,22 @@ func (c *conn) FireTo(name string, ev event.Event, rd event.RawData) error {
 	if err != nil {
 		return err
 	}
-	c.writeEventTo(name, MakeEventStream(ev, rd))
-	return c.flush()
+	WriteEventTo(c.w, name, MakeEventStream(ev, rd))
+	return c.flush(EOL)
 }
 
 func (c *conn) Ping(m string) error {
-	c.writeLen(CPing, len(m))
-	c.w.WriteString(m)
-
-	return c.flush()
+	WritePing(c.w, m)
+	return c.flush(EOL)
 }
 
 func (c *conn) Info() error {
-	c.w.WriteByte(CInfo)
-
-	return c.flush()
+	WriteInfo(c.w)
+	return c.flush(EOL)
 }
 
-func (c *conn) flush() error {
-	c.w.Write(EOL)
+func (c *conn) flush(p []byte) error {
+	c.w.Write(p)
 	if err := c.w.Flush(); err != nil {
 		c.Lock()
 		c.err = err
