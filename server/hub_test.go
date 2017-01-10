@@ -120,6 +120,8 @@ func BenchmarkHub_handle(b *testing.B) {
 		b.Skip()
 	}
 
+	sc := []*conn{}
+
 	for i := 0; i < N; i++ {
 		r, w := io.Pipe()
 		defer w.Close()
@@ -139,6 +141,8 @@ func BenchmarkHub_handle(b *testing.B) {
 			r:    bufio.NewReader(fNetConn),
 			chs:  map[event.Event]bool{},
 		}
+
+		sc = append(sc, c)
 
 		go hub.handle(c)
 		go func(i int) {
@@ -169,5 +173,11 @@ func BenchmarkHub_handle(b *testing.B) {
 
 	for i := 0; i < roundN; i++ {
 		b.Log("ok:", <-cntChan)
+	}
+
+	for _, c := range sc {
+		if err := c.Err(); err != nil {
+			b.Error(err)
+		}
 	}
 }
