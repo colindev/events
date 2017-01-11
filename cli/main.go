@@ -187,7 +187,7 @@ func main() {
 	args := cli.Args()
 	switch len(args) {
 	case 0:
-		handler = buildHandler("echo", []string{})
+		handler = printLine
 	case 1:
 		handler = buildHandler(args[0], []string{})
 	default:
@@ -254,4 +254,8 @@ func buildHandler(cmdName string, cmdArgs []string) event.Handler {
 			log.Println(err)
 		}
 	}
+}
+
+func printLine(ev event.Event, rd event.RawData) {
+	fmt.Println(ev, rd.String())
 }
