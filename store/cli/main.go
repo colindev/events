@@ -118,7 +118,6 @@ func main() {
 	s.EachEvents(func(e *store.Event) (end error) {
 
 		defer func() {
-			limit--
 			if limit == 0 {
 				end = io.EOF
 			}
@@ -138,10 +137,12 @@ func main() {
 
 		for ch := range channels {
 			if event.Event(ch).Match(ev) {
+				limit--
 				if verbose {
 					fmt.Fprintf(os.Stderr, "\033[32m(\033[33m%d\033[32m) %s\033[m\n", e.ReceivedAt, time.Unix(e.ReceivedAt, 0).Format(time.RFC3339))
 				}
-				fmt.Println(ev, rd.String())
+				fmt.Fprintf(os.Stdout, "%s %s\n", ev, rd)
+				time.Sleep(time.Millisecond * 500)
 				break
 			}
 		}
