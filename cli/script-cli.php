@@ -2,4 +2,6 @@
 
 <?php
 
-var_dump($argv);
+while ($line = fgets(STDIN)) {
+    echo $line, PHP_EOL;
+}

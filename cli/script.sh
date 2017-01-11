@@ -1,4 +1,6 @@
 #!/bin/bash
 
-echo '[stdout]' $@
-echo '[stderr]' $@ >&2
+while read name data ; do
+    echo $name
+    echo $data
+done

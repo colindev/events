@@ -7,17 +7,13 @@
 #### shell script
 
 ```sh
-./eventd -event [channel name1] -event [channel name2] ./script.sh 1>>/tmp/info.log 2>>/tmp/err.log 
+./eventd -event [channel name1] -event [channel name2] | ./script.sh 
 ```
 
 #### php
 
 ```sh
-./eventd -event [channel name] php ./script.php
-```
-or
-```sh
-./eventd -event [channel name] ./script-cli.php
+./eventd -event [channel name] | ./script-cli.php
 ```
 
 
