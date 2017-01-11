@@ -16,16 +16,19 @@ dep:
 test:
 	go test -v -race -bench . ./...
 
-build-all: _cli _server _redis-proxy _proxy-watch
+build-all: bin/events-cli bin/store bin/events-server bin/redis-proxy bin/watch
 
-_cli:
+bin/events-cli: cli/*.go 
 	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/events-cli ./cli/
 
-_server:
+bin/store: store/cli/*.go
+	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/store ./store/cli/
+
+bin/events-server: server/*.go
 	go build -a -ldflags "-X main.version=$(VERSION) -X main.appName=$(SERVERNAME)" -o bin/events-server ./server/
 
-_redis-proxy:
+bin/redis-proxy: redis-proxy/*.go
 	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/redis-proxy ./redis-proxy/
 
-_proxy-watch:
+bin/watch: redis-proxy/watch/*.go
 	go build -a -ldflags "-X main.version=$(VERSION)" -o bin/watch ./redis-proxy/watch/
