@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
+	// 暫不開放自選 DSN
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
 
@@ -105,6 +106,7 @@ func New(c Config) (*Store, error) {
 	return store, nil
 }
 
+// Close db conn
 func (s *Store) Close() {
 	close(s.Events)
 	s.tk.Stop()
@@ -114,6 +116,7 @@ func (s *Store) Close() {
 	s.events.Close()
 }
 
+// GetLast auth record
 func (s *Store) GetLast(name string) (*Auth, error) {
 
 	auth := Auth{
@@ -134,12 +137,14 @@ func (s *Store) GetLast(name string) (*Auth, error) {
 	return &auth, nil
 }
 
+// NewAuth insert auth record
 func (s *Store) NewAuth(auth *Auth) error {
 	s.wg.Add(1)
 	defer s.wg.Done()
 	return s.auth.Create(auth).Error
 }
 
+// UpdateAuth record
 func (s *Store) UpdateAuth(auth *Auth) error {
 	s.wg.Add(1)
 	defer s.wg.Done()
@@ -149,6 +154,7 @@ func (s *Store) UpdateAuth(auth *Auth) error {
 	}).Update(auth).Error
 }
 
+// EachAuth callback
 func (s *Store) EachAuth(f func(*Auth) bool, name string) error {
 	offset := 0
 	limit := 10
@@ -176,6 +182,7 @@ func (s *Store) newEvent(ev *Event) error {
 	return s.events.Create(ev).Error
 }
 
+// EachEvents callback
 func (s *Store) EachEvents(f func(*Event) error, prefix []string, since, until int64) error {
 
 	offset := 0
@@ -206,7 +213,7 @@ func (s *Store) EachEvents(f func(*Event) error, prefix []string, since, until i
 
 		for _, ev := range list {
 			if err = f(ev); err != nil {
-				break
+				return err
 			}
 		}
 
