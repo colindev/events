@@ -201,18 +201,3 @@ func TestConnSubAndUnsub(t *testing.T) {
 	}
 
 }
-
-func createWBWC() (*bytes.Buffer, *bufio.Writer, *conn) {
-	w := bytes.NewBuffer(nil)
-	bw := bufio.NewWriter(w)
-	return w, bw, &conn{w: bw}
-}
-func checkBuffer(name string, t *testing.T, w *bytes.Buffer, bw *bufio.Writer, expect string) {
-
-	if err := bw.Flush(); err != nil {
-		t.Errorf("%s buf flush error: %v", name, err)
-	}
-	if w.String() != expect {
-		t.Errorf("%s error: expect[%s], but[%s]", name, expect, w.String())
-	}
-}

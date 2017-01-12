@@ -1,3 +1,7 @@
+// 集中所有 bytes 處理解析
+// 1. 方便容易測試
+// 2. 方便重構優化
+
 package connection
 
 import (
@@ -281,4 +285,22 @@ func ReadLen(r *bufio.Reader, p []byte) ([]byte, error) {
 	// 取出後面換行
 	ReadLine(r)
 	return buf, nil
+}
+
+// ReadTargetAndLen parse and read follow stream of event from reader
+func ReadTargetAndLen(r *bufio.Reader, p []byte) (target string, b []byte, err error) {
+	var n int64
+	target, n, err = ParseTargetAndLen(p)
+	if err != nil {
+		return
+	}
+
+	b = make([]byte, n)
+	_, err = io.ReadFull(r, b)
+	if err != nil {
+		return
+	}
+
+	ReadLine(r)
+	return
 }

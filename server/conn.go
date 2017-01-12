@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net"
 	"strings"
@@ -200,52 +199,15 @@ func (c *conn) GetAuth() *store.Auth {
 
 // ReadLine 回傳去除結尾換行符號後的bytes
 func (c *conn) ReadLine() ([]byte, error) {
-	b, err := c.r.ReadSlice('\n')
-	if err != nil {
-		return nil, err
-	}
-
-	i := len(b) - 2
-	if i < 0 {
-		return nil, nil
-	} else if b[i] != '\r' {
-		i = i + 1
-	}
-
-	return b[:i], nil
+	return connection.ReadLine(c.r)
 }
 
 func (c *conn) ReadLen(p []byte) (b []byte, err error) {
-	var n int64
-	n, err = connection.ParseLen(p)
-	if err != nil {
-		return
-	}
-	b = make([]byte, n)
-	_, err = io.ReadFull(c.r, b)
-	if err != nil {
-		return
-	}
-	// 讀取最後的換行
-	c.ReadLine()
-	return
+	return connection.ReadLen(c.r, p)
 }
 
 func (c *conn) ReadTargetAndLen(p []byte) (target string, b []byte, err error) {
-	var n int64
-	target, n, err = connection.ParseTargetAndLen(p)
-	if err != nil {
-		return
-	}
-
-	b = make([]byte, n)
-	_, err = io.ReadFull(c.r, b)
-	if err != nil {
-		return
-	}
-
-	c.ReadLine()
-	return
+	return connection.ReadTargetAndLen(c.r, p)
 }
 
 func (c *conn) Subscribe(p []byte) (string, error) {
