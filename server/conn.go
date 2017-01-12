@@ -29,6 +29,7 @@ type Conn interface {
 	RemoteAddr() string
 	GetAuth() *store.Auth
 	EachChannels(fs ...func(event.Event) event.Event) map[event.Event]bool
+	Receive() Message
 	ReadLine() ([]byte, error)
 	ReadLen([]byte) ([]byte, error)
 	ReadTargetAndLen([]byte) (string, []byte, error)
@@ -195,6 +196,32 @@ func (c *conn) GetAuth() *store.Auth {
 		IP:          c.RemoteAddr(),
 		ConnectedAt: c.connectedAt,
 	}
+}
+
+func (c *conn) Receive() (msg Message) {
+
+	line, err := connection.ReadLine(c.r)
+	if err != nil {
+		msg.Error = err
+		return
+	}
+
+	if len(line) == 0 {
+		return
+	}
+
+	switch line[0] {
+	case connection.CRecover:
+		var v MessageRecover
+		v.Since, v.Until = connection.ParseSinceUntil(line[1:])
+		msg.Value = v
+
+	case connection.CAddChan:
+		var v MessageSubscribe
+
+	}
+
+	return
 }
 
 // ReadLine 回傳去除結尾換行符號後的bytes
