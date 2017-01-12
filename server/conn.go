@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/store"
 )
@@ -26,7 +26,7 @@ type Conn interface {
 	SetAuthed(bool)
 	IsAuthed() bool
 	SetLastAuth(*store.Auth)
-	GetLastAuth() *store.Auth
+	GetLastAuth() store.Auth
 	RemoteAddr() string
 	GetAuth() *store.Auth
 	EachChannels(fs ...func(event.Event) event.Event) map[event.Event]bool
@@ -48,7 +48,7 @@ type Conn interface {
 type ConnStatus struct {
 	Channel  []event.Event
 	Name     string
-	LastAuth *store.Auth `json:",omitempty"`
+	LastAuth store.Auth `json:",omitempty"`
 	Flag     int
 }
 
@@ -62,11 +62,9 @@ type conn struct {
 	chs    map[event.Event]bool
 	authed bool
 	// recover events 用
-	lastAuth    *store.Auth
+	lastAuth    store.Auth
 	connectedAt int64
 	name        string
-	// 數字轉 []byte 用
-	lenBox [32]byte
 }
 
 func newConn(c net.Conn, t time.Time) Conn {
@@ -88,7 +86,7 @@ func (c *conn) Status(ignoreWriteOnly bool) *ConnStatus {
 	c.RUnlock()
 
 	// NOTE ignore write only (launcher conn)
-	if ignoreWriteOnly && flags == client.Writable {
+	if ignoreWriteOnly && flags == connection.Writable {
 		return nil
 	}
 
@@ -108,23 +106,35 @@ func (c *conn) Status(ignoreWriteOnly bool) *ConnStatus {
 
 // SetLastAuth 注入上一次登入紀錄
 func (c *conn) SetLastAuth(a *store.Auth) {
-	c.lastAuth = a
+	c.Lock()
+	c.lastAuth = *a
+	c.Unlock()
 }
-func (c *conn) GetLastAuth() *store.Auth {
-	return c.lastAuth
+func (c *conn) GetLastAuth() store.Auth {
+	c.RLock()
+	auth := c.lastAuth
+	c.RUnlock()
+	return auth
 }
 
 func (c *conn) SetName(name string) {
+	c.Lock()
 	c.name = name
+	c.Unlock()
 }
 func (c *conn) GetName() string {
-	return c.name
+	c.RLock()
+	name := c.name
+	c.RUnlock()
+	return name
 }
 func (c *conn) HasName() bool {
-	return c.name != ""
+	return c.GetName() != ""
 }
 
 func (c *conn) RemoteAddr() string {
+	c.RLock()
+	defer c.RUnlock()
 	if c.conn == nil {
 		return ""
 	}
@@ -132,9 +142,13 @@ func (c *conn) RemoteAddr() string {
 }
 
 func (c *conn) SetFlags(flags int) {
+
+	c.Lock()
+	defer c.Unlock()
+
 	// 如果 client 不指定讀取權限
 	// 就轉導 write buffer 到 ioutil.Discard
-	if flags&client.Readable > 0 {
+	if flags&connection.Readable > 0 {
 		c.w = bufio.NewWriter(c.conn)
 	} else {
 		c.w = bufio.NewWriter(ioutil.Discard)
@@ -146,20 +160,33 @@ func (c *conn) SetFlags(flags int) {
 	// 由 Hub.handle 處理
 }
 
+func (c *conn) GetFlags() int {
+	c.RLock()
+	n := c.flags
+	c.RUnlock()
+
+	return n
+}
+
 func (c *conn) Writable() bool {
-	return (c.flags & client.Writable) != 0
+	return (c.GetFlags() & connection.Writable) != 0
 }
 
 func (c *conn) Readable() bool {
-	return (c.flags & client.Readable) != 0
+	return (c.GetFlags() & connection.Readable) != 0
 }
 
 func (c *conn) SetAuthed(t bool) {
+	c.Lock()
 	c.authed = t
+	c.Unlock()
 }
 
 func (c *conn) IsAuthed() bool {
-	return c.authed
+	c.RLock()
+	authed := c.authed
+	c.RUnlock()
+	return authed
 }
 
 // GetAuth 回傳當前連線的登入紀錄
@@ -190,7 +217,7 @@ func (c *conn) ReadLine() ([]byte, error) {
 
 func (c *conn) ReadLen(p []byte) (b []byte, err error) {
 	var n int64
-	n, err = client.ParseLen(p)
+	n, err = connection.ParseLen(p)
 	if err != nil {
 		return
 	}
@@ -206,7 +233,7 @@ func (c *conn) ReadLen(p []byte) (b []byte, err error) {
 
 func (c *conn) ReadTargetAndLen(p []byte) (target string, b []byte, err error) {
 	var n int64
-	target, n, err = client.ParseTargetAndLen(p)
+	target, n, err = connection.ParseTargetAndLen(p)
 	if err != nil {
 		return
 	}
@@ -318,24 +345,24 @@ func (c *conn) flush(p []byte) error {
 
 func (c *conn) SendError(err error) error {
 	buf := makeError(err)
-	buf.Write(client.EOL)
+	buf.Write(connection.EOL)
 	return c.flush(buf.Bytes())
 }
 
 func (c *conn) SendReply(m string) error {
 	buf := makeReply(m)
-	buf.Write(client.EOL)
+	buf.Write(connection.EOL)
 	return c.flush(buf.Bytes())
 }
 
 func (c *conn) SendPong(ping []byte) error {
 	buf := makePong(ping)
-	buf.Write(client.EOL)
+	buf.Write(connection.EOL)
 	return c.flush(buf.Bytes())
 }
 
 func (c *conn) SendEvent(e string) error {
 	buf := makeEvent(e)
-	buf.Write(client.EOL)
+	buf.Write(connection.EOL)
 	return c.flush(buf.Bytes())
 }

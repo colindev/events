@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/server/fake"
 )
@@ -146,9 +146,9 @@ func BenchmarkHub_handle(b *testing.B) {
 
 		go hub.handle(c)
 		go func(i int) {
-			client.WriteAuth(cc, "", 3)
+			connection.WriteAuth(cc, "", 3)
 			cc.WriteByte('\n')
-			client.WriteSubscribe(cc, "*")
+			connection.WriteSubscribe(cc, "*")
 			cc.WriteByte('\n')
 			cc.Flush()
 		}(i)
@@ -159,7 +159,7 @@ func BenchmarkHub_handle(b *testing.B) {
 		b.Error(err)
 		b.Skip()
 	}
-	storeEvent := client.MakeEvent("test.data", rd, time.Now())
+	storeEvent := connection.MakeEvent("test.data", rd, time.Now())
 
 	roundN := b.N
 	cntChan := make(chan int, roundN)

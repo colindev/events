@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/store"
 )
@@ -39,14 +40,14 @@ func (f *followConn) ReadLine() (line []byte, err error) {
 	}
 
 	switch line[0] {
-	case client.CEvent:
+	case connection.CEvent:
 		p, e := f.ReadLen(line[1:])
 		if e != nil {
 			err = fmt.Errorf("error from ReadLen %v", e)
 			break
 		}
 
-		eventName, compressedData, e := client.ParseEvent(p)
+		eventName, compressedData, e := connection.ParseEvent(p)
 		s, _ := event.Uncompress(compressedData)
 		f.hub.Printf("from following %s: %s %s %v", f.Conn.RemoteAddr(), eventName, s, e)
 		if e != nil {
@@ -70,7 +71,7 @@ func (f *followConn) ReadLine() (line []byte, err error) {
 			f.hub.store.UpdateAuth(&auth)
 		case event.Connected: // ignore
 		default:
-			storeEvent := client.MakeEvent(eventName, compressedData, time.Now())
+			storeEvent := connection.MakeEvent(eventName, compressedData, time.Now())
 			f.hub.store.Events <- storeEvent
 			f.hub.publish(storeEvent)
 		}
@@ -86,7 +87,7 @@ func Follow(hub *Hub, addr string, since int64) error {
 	if err != nil {
 		return fmt.Errorf("follow dial error: %v", err)
 	}
-	if err := cc.Auth(client.Readable); err != nil {
+	if err := cc.Auth(connection.Readable); err != nil {
 		return fmt.Errorf("follow auth error: %v", err)
 	}
 	if err := cc.Subscribe("*"); err != nil {
@@ -95,7 +96,7 @@ func Follow(hub *Hub, addr string, since int64) error {
 
 	// client conn 連線登入完就不用了
 	sc := newConn(cc.Conn(), time.Now())
-	if err := hub.auth(sc, []byte(fmt.Sprintf(":%d", client.Writable|client.Readable))); err != nil {
+	if err := hub.auth(sc, []byte(fmt.Sprintf(":%d", connection.Writable|connection.Readable))); err != nil {
 		return fmt.Errorf("follow register error: %v", err)
 	}
 	sc.SetAuthed(true)

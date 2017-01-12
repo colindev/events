@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"strings"
 	"testing"
 
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 )
 
@@ -26,61 +26,6 @@ func TestFlag_String(t *testing.T) {
 			t.Errorf("Flag String error %d expect %s, but %s", i, s, ss)
 		}
 	}
-}
-
-func TestConn_readLine(t *testing.T) {
-	var (
-		c    *conn
-		err  error
-		line []byte
-	)
-
-	c = createConn("")
-	_, err = c.readLine()
-	if err != io.EOF {
-		t.Error("EOL")
-	}
-
-	c.r = createBufReader("\n")
-	_, err = c.readLine()
-	if err == nil {
-		t.Error("miss \\r")
-	}
-
-	c.r = createBufReader("\r\n")
-	line, err = c.readLine()
-	if !bytes.Equal(line, []byte{}) {
-		t.Errorf("expect empty line, but %+v", line)
-	}
-
-	c.r = createBufReader("123\r\n456\r\n")
-
-	c.readLine()
-	line, _ = c.readLine()
-	if string(line) != "456" {
-		t.Errorf("expect 456, but [%s]", line)
-	}
-}
-
-func TestConn_readLen(t *testing.T) {
-
-	c := &conn{}
-
-	temp := "1234567890"
-	tempStream := fmt.Sprintf("%sx\r\n", temp)
-
-	c.r = createBufReader(tempStream)
-
-	p, err := c.readLen([]byte{'1', '0'})
-	if err != nil {
-		t.Error("readLen error: ", err)
-		t.Skip("skip check contents")
-	}
-
-	if string(p) != temp {
-		t.Errorf("readLen error, expect [%s], but [%s]", temp, p)
-	}
-
 }
 
 func TestConn_ReceiveReply(t *testing.T) {
@@ -199,26 +144,6 @@ func TestConn_ReceiveEvent(t *testing.T) {
 	}
 }
 
-func BenchmarkParseEvent(b *testing.B) {
-
-	// 直接利用原本機制產生測試用資料
-	buf := bytes.NewBuffer([]byte{})
-	c := &conn{
-		w: bufio.NewWriter(buf),
-		r: bufio.NewReader(buf),
-	}
-	c.Fire(eventName, eventData)
-
-	line, _ := c.readLine()
-	n, _ := ParseLen(line[1:])
-	p := make([]byte, n)
-	io.ReadFull(c.r, p)
-
-	for i := 0; i < b.N; i++ {
-		ParseEvent(p)
-	}
-}
-
 func createBWC() (*bytes.Buffer, *bufio.Writer, *conn) {
 	buf := bytes.NewBuffer(nil)
 	bw := bufio.NewWriter(buf)
@@ -236,37 +161,12 @@ func checkBuf(name string, t *testing.T, buf *bytes.Buffer, bw *bufio.Writer, ex
 	}
 }
 
-func TestConn_writeLen(t *testing.T) {
-
-	buf, bw, c := createBWC()
-
-	prefix := byte('@')
-	length := 12345
-	expect := fmt.Sprintf("%c%d\r\n", prefix, length)
-
-	c.writeLen(prefix, length)
-
-	checkBuf("writeLen", t, buf, bw, expect)
-}
-
-func TestConn_writeEvent(t *testing.T) {
-	buf, bw, c := createBWC()
-
-	prefix := CEvent
-	eventText := "aaa.bbb:ccc"
-	expect := fmt.Sprintf("%c%d\r\n%s", prefix, len(eventText), eventText)
-
-	c.writeEvent([]byte(eventText))
-
-	checkBuf("writeEvent", t, buf, bw, expect)
-}
-
 func TestConn_Auth(t *testing.T) {
 	buf, bw, c := createBWC()
 
-	prefix := CAuth
+	prefix := connection.CAuth
 	authText := "test name"
-	flags := Writable | Readable
+	flags := connection.Writable | connection.Readable
 	expect := fmt.Sprintf("%c%s:%d\r\n", prefix, authText, 3)
 
 	c.name = authText
@@ -278,7 +178,7 @@ func TestConn_Auth(t *testing.T) {
 func TestConn_Recover(t *testing.T) {
 	buf, bw, c := createBWC()
 
-	prefix := CRecover
+	prefix := connection.CRecover
 	since := int64(12345600)
 	until := int64(0)
 	expect := fmt.Sprintf("%c%d:%d\r\n", prefix, since, until)
@@ -291,7 +191,7 @@ func TestConn_Recover(t *testing.T) {
 func TestConn_Subscribe(t *testing.T) {
 	buf, bw, c := createBWC()
 
-	prefix := CAddChan
+	prefix := connection.CAddChan
 	chanName := "xyz"
 	expect := fmt.Sprintf("%c%s\r\n", prefix, chanName)
 
@@ -303,7 +203,7 @@ func TestConn_Subscribe(t *testing.T) {
 func TestConn_Unsubscribe(t *testing.T) {
 	buf, bw, c := createBWC()
 
-	prefix := CDelChan
+	prefix := connection.CDelChan
 	chanName := "xyz"
 	expect := fmt.Sprintf("%c%s\r\n", prefix, chanName)
 
@@ -315,7 +215,7 @@ func TestConn_Unsubscribe(t *testing.T) {
 func TestConn_Fire(t *testing.T) {
 	buf, bw, c := createBWC()
 
-	prefix := CEvent
+	prefix := connection.CEvent
 	b, err := event.Compress(eventData)
 	if err != nil {
 		t.Error(err)
@@ -332,7 +232,7 @@ func TestConn_Fire(t *testing.T) {
 func TestConn_Ping(t *testing.T) {
 	buf, bw, c := createBWC()
 
-	prefix := CPing
+	prefix := connection.CPing
 	pingText := "123\n456\r\n789\r\n"
 	expect := fmt.Sprintf("%c%d\r\n%s\r\n", prefix, len(pingText), pingText)
 

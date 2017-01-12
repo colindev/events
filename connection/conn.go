@@ -1,4 +1,4 @@
-package client
+package connection
 
 import (
 	"bufio"
@@ -6,12 +6,51 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/store"
+)
+
+const (
+
+	// CAuth 登入名稱流前綴
+	CAuth byte = '$'
+	// CEvent 事件長度流前綴
+	CEvent byte = '='
+	// CAddChan 註冊頻道流前綴
+	CAddChan byte = '+'
+	// CDelChan 移除頻道流前綴
+	CDelChan byte = '-'
+	// CErr 錯誤訊息流前綴
+	CErr byte = '!'
+	// CReply 回應流前綴
+	CReply byte = '*'
+	// CPing client ping
+	CPing byte = '@'
+	// CPong reply ping
+	CPong byte = '@'
+	// CRecover client 請求過往資料
+	CRecover byte = '>'
+	// CTarget specify receiver
+	CTarget byte = '<'
+	// CInfo 請求 server 資料
+	CInfo byte = '#'
+
+	// Writable flag
+	Writable = 1
+	// Readable flag
+	Readable = 2
+)
+
+var (
+	// OK preprocess to bytes
+	OK = []byte{0x1f, 0x8b, 0x8, 0x0, 0x0, 0x9, 0x6e, 0x88, 0x0, 0xff}
+	// EOL end of line
+	EOL = []byte{'\r', '\n'}
 )
 
 // ParseLen of socket stream
@@ -208,4 +247,38 @@ func WriteUnsubscribe(w *bufio.Writer, chans ...string) (err error) {
 	}
 
 	return
+}
+
+// ReadLine 回傳去除結尾換行符號後的bytes
+func ReadLine(r *bufio.Reader) ([]byte, error) {
+	b, err := r.ReadSlice('\n')
+	if err != nil {
+		return nil, err
+	}
+
+	i := len(b) - 2
+	if i < 0 {
+		return nil, nil
+	} else if b[i] != '\r' {
+		i = i + 1
+	}
+
+	return b[:i], nil
+}
+
+// ReadLen read stream from reader by p (specify length)
+func ReadLen(r *bufio.Reader, p []byte) ([]byte, error) {
+	n, err := ParseLen(p)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, n)
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	// 取出後面換行
+	ReadLine(r)
+	return buf, nil
 }

@@ -4,48 +4,12 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"sync"
 
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
-)
-
-const (
-
-	// CAuth 登入名稱流前綴
-	CAuth byte = '$'
-	// CEvent 事件長度流前綴
-	CEvent byte = '='
-	// CAddChan 註冊頻道流前綴
-	CAddChan byte = '+'
-	// CDelChan 移除頻道流前綴
-	CDelChan byte = '-'
-	// CErr 錯誤訊息流前綴
-	CErr byte = '!'
-	// CReply 回應流前綴
-	CReply byte = '*'
-	// CPing client ping
-	CPing byte = '@'
-	// CPong reply ping
-	CPong byte = '@'
-	// CRecover client 請求過往資料
-	CRecover byte = '>'
-	// CTarget specify receiver
-	CTarget byte = '<'
-	// CInfo 請求 server 資料
-	CInfo byte = '#'
-
-	// Writable flag
-	Writable = 1
-	// Readable flag
-	Readable = 2
-)
-
-var (
-	OK  = []byte{0x1f, 0x8b, 0x8, 0x0, 0x0, 0x9, 0x6e, 0x88, 0x0, 0xff}
-	EOL = []byte{'\r', '\n'}
 )
 
 // Flag is Read Write flag
@@ -53,12 +17,12 @@ type Flag int
 
 func (i Flag) String() string {
 	var w, r string
-	if i&Readable == Readable {
+	if i&connection.Readable == connection.Readable {
 		r = "r"
 	} else {
 		r = "-"
 	}
-	if i&Writable == Writable {
+	if i&connection.Writable == connection.Writable {
 		w = "w"
 	} else {
 		w = "-"
@@ -105,9 +69,6 @@ type conn struct {
 	w    *bufio.Writer
 	r    *bufio.Reader
 	err  error
-	// 數字轉 []byte 用
-	lenBox  [32]byte
-	pending int
 }
 
 // Dial 回傳 conn 實體物件
@@ -135,39 +96,9 @@ func (c *conn) Close() error {
 	return c.conn.Close()
 }
 
-func (c *conn) readLine() ([]byte, error) {
-	b, err := c.r.ReadSlice('\n')
-	if err != nil {
-		return nil, err
-	}
-
-	i := len(b) - 2
-	if i < 0 || b[i] != '\r' {
-		return nil, errors.New("empty line")
-	}
-
-	return b[:i], nil
-}
-
-func (c *conn) readLen(p []byte) ([]byte, error) {
-	n, err := ParseLen(p)
-	if err != nil {
-		return nil, err
-	}
-	buf := make([]byte, n)
-	_, err = io.ReadFull(c.r, buf)
-	if err != nil {
-		return nil, err
-	}
-
-	// 取出後面換行
-	c.readLine()
-	return buf, nil
-}
-
 func (c *conn) Receive() (ret interface{}, err error) {
 
-	line, err := c.readLine()
+	line, err := connection.ReadLine(c.r)
 	// TODO 隔離測試時 conn 是 nil
 	if err != nil {
 		return
@@ -175,19 +106,19 @@ func (c *conn) Receive() (ret interface{}, err error) {
 	// log.Printf("<- client [%s]: %v = [%s] %v\n", c.name, line, line, err)
 
 	switch line[0] {
-	case CReply:
+	case connection.CReply:
 		ret = &Reply{strings.TrimSpace(string(line[1:]))}
 
-	case CErr:
-		p, e := c.readLen(line[1:])
+	case connection.CErr:
+		p, e := connection.ReadLen(c.r, line[1:])
 		if e != nil {
 			err = e
 			return
 		}
 		return nil, errors.New(string(p))
 
-	case CPong:
-		p, e := c.readLen(line[1:])
+	case connection.CPong:
+		p, e := connection.ReadLen(c.r, line[1:])
 		if e != nil {
 			err = e
 			return
@@ -198,14 +129,14 @@ func (c *conn) Receive() (ret interface{}, err error) {
 			Data: p,
 		}
 
-	case CEvent:
-		p, e := c.readLen(line[1:])
+	case connection.CEvent:
+		p, e := connection.ReadLen(c.r, line[1:])
 		if e != nil {
 			err = e
 			return
 		}
 
-		eventName, eventData, e := ParseEvent(p)
+		eventName, eventData, e := connection.ParseEvent(p)
 		if e != nil {
 			err = e
 			return
@@ -226,39 +157,23 @@ func (c *conn) Receive() (ret interface{}, err error) {
 	return ret, err
 }
 
-func (c *conn) writeLen(prefix byte, n int) error {
-	return WriteLen(c.w, prefix, n)
-}
-
-func (c *conn) writeTargetAndLen(prefix byte, target string, n int) error {
-	return WriteTargetAndLen(c.w, prefix, target, n)
-}
-
-func (c *conn) writeEvent(p []byte) error {
-	return WriteEvent(c.w, p)
-}
-
-func (c *conn) writeEventTo(name string, p []byte) error {
-	return WriteEventTo(c.w, name, p)
-}
-
 func (c *conn) Auth(flags int) error {
-	WriteAuth(c.w, c.name, flags)
-	return c.flush(EOL)
+	connection.WriteAuth(c.w, c.name, flags)
+	return c.flush(connection.EOL)
 }
 
 func (c *conn) Recover(since, until int64) error {
-	WriteRecover(c.w, since, until)
-	return c.flush(EOL)
+	connection.WriteRecover(c.w, since, until)
+	return c.flush(connection.EOL)
 }
 
 func (c *conn) Subscribe(chans ...string) error {
-	WriteSubscribe(c.w, chans...)
+	connection.WriteSubscribe(c.w, chans...)
 	return c.flush(nil)
 }
 
 func (c *conn) Unsubscribe(chans ...string) error {
-	WriteUnsubscribe(c.w, chans...)
+	connection.WriteUnsubscribe(c.w, chans...)
 	return c.flush(nil)
 }
 
@@ -267,8 +182,8 @@ func (c *conn) Fire(ev event.Event, rd event.RawData) error {
 	if err != nil {
 		return err
 	}
-	WriteEvent(c.w, MakeEventStream(ev, rd))
-	return c.flush(EOL)
+	connection.WriteEvent(c.w, connection.MakeEventStream(ev, rd))
+	return c.flush(connection.EOL)
 }
 
 func (c *conn) FireTo(name string, ev event.Event, rd event.RawData) error {
@@ -276,18 +191,18 @@ func (c *conn) FireTo(name string, ev event.Event, rd event.RawData) error {
 	if err != nil {
 		return err
 	}
-	WriteEventTo(c.w, name, MakeEventStream(ev, rd))
-	return c.flush(EOL)
+	connection.WriteEventTo(c.w, name, connection.MakeEventStream(ev, rd))
+	return c.flush(connection.EOL)
 }
 
 func (c *conn) Ping(m string) error {
-	WritePing(c.w, m)
-	return c.flush(EOL)
+	connection.WritePing(c.w, m)
+	return c.flush(connection.EOL)
 }
 
 func (c *conn) Info() error {
-	WriteInfo(c.w)
-	return c.flush(EOL)
+	connection.WriteInfo(c.w)
+	return c.flush(connection.EOL)
 }
 
 func (c *conn) flush(p []byte) error {

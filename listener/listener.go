@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 )
 
@@ -115,7 +116,7 @@ func (l *listener) Run(channels ...interface{}) error {
 	l.setConn(conn)
 
 	// 登入名稱
-	if err := conn.Auth(client.Readable); err != nil {
+	if err := conn.Auth(connection.Readable); err != nil {
 		return err
 	}
 

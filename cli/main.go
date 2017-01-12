@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/launcher"
 	"github.com/colindev/events/listener"
@@ -136,7 +137,7 @@ func main() {
 				}
 				switch strings.ToUpper(cmd) {
 				case "FIRE":
-					ev, rd, err := client.ParseEvent(line[i+1:])
+					ev, rd, err := connection.ParseEvent(line[i+1:])
 					if err != nil {
 						fmt.Println(err)
 						continue
@@ -152,7 +153,7 @@ func main() {
 						fmt.Println(err)
 						continue
 					}
-					ev, rd, err := client.ParseEvent(b)
+					ev, rd, err := connection.ParseEvent(b)
 					if err != nil {
 						fmt.Println(err)
 						continue

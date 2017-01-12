@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/store"
 )
@@ -123,7 +123,7 @@ func main() {
 			}
 		}()
 
-		ev, rd, err := client.ParseEvent([]byte(e.Raw))
+		ev, rd, err := connection.ParseEvent([]byte(e.Raw))
 		if err != nil {
 			log.Println(err)
 			return

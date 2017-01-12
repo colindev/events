@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/store"
 )
@@ -199,9 +200,6 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 	if since == 0 {
 		// NOTE 沒上一次的登入紀錄時不重送全部訊息
 		lastAuth := c.GetLastAuth()
-		if lastAuth == nil {
-			return nil
-		}
 		if lastAuth.DisconnectedAt == 0 {
 			return nil
 		}
@@ -276,7 +274,7 @@ func (h *Hub) handle(c Conn) {
 	h.Printf("%s app(%s) connected\n", c.RemoteAddr(), c.GetName())
 
 	// 發送連線事件
-	c.SendEvent(string(client.MakeEventStream(event.Connected, client.OK)))
+	c.SendEvent(string(connection.MakeEventStream(event.Connected, connection.OK)))
 
 	// 廣播具名客端 Join 事件
 	go func() {
@@ -300,15 +298,15 @@ func (h *Hub) handle(c Conn) {
 
 		switch line[0] {
 		// case client.CAuth: 只做單次登入
-		case client.CRecover:
-			since, until := client.ParseSinceUntil(line[1:])
+		case connection.CRecover:
+			since, until := connection.ParseSinceUntil(line[1:])
 
 			if err := h.recover(c, since, until); err != nil {
 				h.Printf("recover since=%d until=%d error: %v\n", since, until, err)
 				c.SendError(err)
 			}
 
-		case client.CAddChan:
+		case connection.CAddChan:
 			if channel, err := c.Subscribe(line[1:]); err != nil {
 				h.Printf("app(%s) subscribe failed %v\n", c.GetName(), err)
 				c.SendError(err)
@@ -317,7 +315,7 @@ func (h *Hub) handle(c Conn) {
 				c.SendReply("subscribe " + channel + " OK")
 			}
 
-		case client.CDelChan:
+		case connection.CDelChan:
 			if channel, err := c.Unsubscribe(line[1:]); err != nil {
 				h.Printf("app(%s) unsubscribe failed %v\n", c.GetName(), err)
 				c.SendError(err)
@@ -326,7 +324,7 @@ func (h *Hub) handle(c Conn) {
 				c.SendReply("unsubscribe " + channel + " OK")
 			}
 
-		case client.CPing:
+		case connection.CPing:
 			p, err := c.ReadLen(line[1:])
 			if err != nil {
 				h.Println(err)
@@ -336,15 +334,15 @@ func (h *Hub) handle(c Conn) {
 
 			c.SendPong(p)
 
-		case client.CInfo:
+		case connection.CInfo:
 			rd, err := event.Compress(event.RawData(h.info(true)))
 			if err != nil {
 				c.SendError(err)
 			} else {
-				c.SendEvent(string(client.MakeEventStream(event.Info, rd)))
+				c.SendEvent(string(connection.MakeEventStream(event.Info, rd)))
 			}
 
-		case client.CTarget:
+		case connection.CTarget:
 			target, p, err := c.ReadTargetAndLen(line[1:])
 			if err != nil {
 				h.Println(err)
@@ -360,18 +358,18 @@ func (h *Hub) handle(c Conn) {
 				continue
 			}
 
-			eventName, eventData, err := client.ParseEvent(p)
+			eventName, eventData, err := connection.ParseEvent(p)
 			s, _ := event.Uncompress(eventData)
 			h.Printf("from %s to %s: %s %s %v\n", c.RemoteAddr(), target, eventName, s, err)
 			// 指定傳送不儲存
 			if err == nil {
-				storeEvent := client.MakeEvent(eventName, eventData, time.Now())
+				storeEvent := connection.MakeEvent(eventName, eventData, time.Now())
 				h.sendEventTo(target, storeEvent)
 			} else {
 				c.SendError(err)
 			}
 
-		case client.CEvent:
+		case connection.CEvent:
 			p, err := c.ReadLen(line[1:])
 			if err != nil {
 				h.Println(err)
@@ -382,18 +380,18 @@ func (h *Hub) handle(c Conn) {
 			if !c.Writable() {
 				h.Printf("this (%p)%#v has no writable flag, event droped\n", c.(*conn), c)
 				if h.verbose {
-					eventName, eventData, err := client.ParseEvent(p)
+					eventName, eventData, err := connection.ParseEvent(p)
 					s, _ := event.Uncompress(eventData)
 					h.Printf("\n--- payload\n%s %s\n%v\n---", eventName, s, err)
 				}
 				continue
 			}
 
-			eventName, eventData, err := client.ParseEvent(p)
+			eventName, eventData, err := connection.ParseEvent(p)
 			s, _ := event.Uncompress(eventData)
 			h.Printf("from %s broadcast: %s %s %v\n", c.RemoteAddr(), eventName, s, err)
 			if err == nil {
-				storeEvent := client.MakeEvent(eventName, eventData, time.Now())
+				storeEvent := connection.MakeEvent(eventName, eventData, time.Now())
 				h.store.Events <- storeEvent
 				h.publish(storeEvent)
 			} else {
@@ -462,7 +460,7 @@ func (h *Hub) publishJoin(c Conn) (pub bool, err error) {
 	if err != nil {
 		return
 	}
-	storeEvent := client.MakeEvent(event.Join, rdCompressed, time.Unix(connAuth.ConnectedAt, 0))
+	storeEvent := connection.MakeEvent(event.Join, rdCompressed, time.Unix(connAuth.ConnectedAt, 0))
 	h.publish(storeEvent, c)
 
 	return true, err
@@ -480,7 +478,7 @@ func (h *Hub) publishQuit(c Conn, auth *store.Auth) (pub bool, err error) {
 	if err != nil {
 		return
 	}
-	storeEvent := client.MakeEvent(event.Leave, rdCompressed, time.Unix(auth.DisconnectedAt, 0))
+	storeEvent := connection.MakeEvent(event.Leave, rdCompressed, time.Unix(auth.DisconnectedAt, 0))
 	h.publish(storeEvent, c)
 
 	return true, err

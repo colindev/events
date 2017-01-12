@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 )
 
@@ -60,7 +61,7 @@ func (l *launcher) FireTo(target string, ev event.Event, rd event.RawData) error
 // Run try resent
 func (l *launcher) reduce(keep int, du time.Duration) {
 	conn := l.pool.Get()
-	conn.Auth(client.Writable)
+	conn.Auth(connection.Writable)
 	// 保留最後 n 筆資料
 	cache := list.New()
 	fire := func(c client.Conn, ca *client.Event) error {
@@ -84,7 +85,7 @@ func (l *launcher) reduce(keep int, du time.Duration) {
 			}
 			conn.Close()
 			conn = l.pool.Get()
-			if err := conn.Auth(client.Writable); err != nil {
+			if err := conn.Auth(connection.Writable); err != nil {
 				time.Sleep(du)
 			} else {
 				// 每次斷線後重新連上,延遲一段時間才重送資料

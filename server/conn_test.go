@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 	"github.com/colindev/events/event"
 	"github.com/colindev/events/server/fake"
 )
@@ -53,7 +53,7 @@ func TestConn_SetFlags(t *testing.T) {
 	}
 
 	// write only client/conn 應該被替換成 ioutil.Discard / Conn.Writable 應該是true 表示接收 Conn.Receive 傳來的 stream
-	c.SetFlags(client.Writable)
+	c.SetFlags(connection.Writable)
 	if !c.Writable() {
 		t.Error("this conn is writable")
 	}
@@ -63,7 +63,7 @@ func TestConn_SetFlags(t *testing.T) {
 	}
 
 	// read only client/conn w 為正確的net.Conn / Conn.Writable 應該回傳 false 表示 Conn.Recieve 的 Event stream 會被丟棄
-	c.SetFlags(client.Readable)
+	c.SetFlags(connection.Readable)
 	c.conn.(*fake.NetConn).W = func([]byte) (int, error) { return 0, io.EOF }
 	if c.Writable() {
 		t.Error("this conn can't write")
@@ -73,7 +73,7 @@ func TestConn_SetFlags(t *testing.T) {
 		t.Error(err)
 	}
 
-	c.SetFlags(client.Writable | client.Readable)
+	c.SetFlags(connection.Writable | connection.Readable)
 	if !c.Writable() {
 		t.Error("SetFlag(W|R) but Conn.Writable() return false")
 	}

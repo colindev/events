@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"strconv"
 
-	"github.com/colindev/events/client"
+	"github.com/colindev/events/connection"
 )
 
 func min(a, b int64) int64 {
@@ -33,31 +33,31 @@ func makeLen(prefix byte, n int) *bytes.Buffer {
 	buf := bytes.NewBuffer(nil)
 	buf.WriteByte(prefix)
 	buf.WriteString(strconv.Itoa(n))
-	buf.Write(client.EOL)
+	buf.Write(connection.EOL)
 	return buf
 }
 
 func makeReply(m string) *bytes.Buffer {
 	buf := bytes.NewBuffer(nil)
-	buf.WriteByte(client.CReply)
+	buf.WriteByte(connection.CReply)
 	buf.WriteString(m)
 	return buf
 }
 
 func makeError(err error) *bytes.Buffer {
-	buf := makeLen(client.CErr, len(err.Error()))
+	buf := makeLen(connection.CErr, len(err.Error()))
 	buf.WriteString(err.Error())
 	return buf
 }
 
 func makePong(ping []byte) *bytes.Buffer {
-	buf := makeLen(client.CPong, len(ping))
+	buf := makeLen(connection.CPong, len(ping))
 	buf.Write(ping)
 	return buf
 }
 
 func makeEvent(e string) *bytes.Buffer {
-	buf := makeLen(client.CEvent, len(e))
+	buf := makeLen(connection.CEvent, len(e))
 	buf.WriteString(e)
 	return buf
 }
