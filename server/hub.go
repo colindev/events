@@ -58,8 +58,6 @@ func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 // Auth 執行登入紀錄
 func (h *Hub) auth(c Conn, p []byte) error {
 
-	// log.Printf("\033[31mauth %s(%s)\033[m\n", c.RemoteAddr(), c.GetName())
-
 	h.Lock()
 	defer h.Unlock()
 
@@ -153,8 +151,6 @@ func (h *Hub) quitAll(t time.Time) {
 // 為了方便從資料庫取出廣播,不要改變第一參數型別
 func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 
-	h.Lock()
-	defer h.Unlock()
 	var conns = []Conn{}
 	var ignores = map[Conn]bool{}
 
