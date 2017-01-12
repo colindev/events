@@ -162,7 +162,7 @@ func main() {
 				case "INFO":
 					li.Info()
 				default:
-					fmt.Println("unkown command")
+					fmt.Println("unknown command")
 				}
 
 			}
