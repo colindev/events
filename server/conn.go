@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -39,10 +40,10 @@ type Conn interface {
 	IsListening(string) bool
 	Err() error
 	Close(error) error
-	SendError(error) error
-	SendReply(string) error
-	SendPong([]byte) error
-	SendEvent(e string) error
+	SendError(error)
+	SendReply(string)
+	SendPong([]byte)
+	SendEvent(e string)
 }
 
 // ConnStatus contain conn status
@@ -66,6 +67,10 @@ type conn struct {
 	lastAuth    store.Auth
 	connectedAt int64
 	name        string
+
+	sync.WaitGroup
+	closed  bool
+	streams chan *bytes.Buffer
 }
 
 func newConn(c net.Conn, t time.Time) Conn {
@@ -75,33 +80,7 @@ func newConn(c net.Conn, t time.Time) Conn {
 		r:           bufio.NewReader(c),
 		chs:         map[event.Event]bool{},
 		connectedAt: t.Unix(),
-	}
-}
-
-// Status non-export
-func (c *conn) Status(ignoreWriteOnly bool) *ConnStatus {
-	c.RLock()
-	name := c.name
-	flags := c.flags
-	lastAuth := c.lastAuth
-	c.RUnlock()
-
-	// NOTE ignore write only (launcher conn)
-	if ignoreWriteOnly && flags == connection.Writable {
-		return nil
-	}
-
-	chs := []event.Event{}
-	c.EachChannels(func(ev event.Event) event.Event {
-		chs = append(chs, ev)
-		return ev
-	})
-
-	return &ConnStatus{
-		Channel:  chs,
-		Name:     name,
-		LastAuth: lastAuth,
-		Flag:     flags,
+		streams:     make(chan *bytes.Buffer, 20),
 	}
 }
 
@@ -111,6 +90,7 @@ func (c *conn) SetLastAuth(a *store.Auth) {
 	c.lastAuth = *a
 	c.Unlock()
 }
+
 func (c *conn) GetLastAuth() store.Auth {
 	c.RLock()
 	auth := c.lastAuth
@@ -386,44 +366,85 @@ func (c *conn) Err() error {
 func (c *conn) Close(err error) error {
 	c.Lock()
 	defer c.Unlock()
+	if c.closed {
+		return err
+	}
+	c.closed = true
+
+	close(c.streams)
+	c.Wait()
 	if c.err == nil {
 		c.err = err
 		c.conn.Close()
 	}
-	return err
+	return c.err
 }
 
 func (c *conn) flush(p []byte) error {
-	c.Lock()
-	defer c.Unlock()
 	c.w.Write(p)
 	if err := c.w.Flush(); err != nil {
-		return c.Close(err)
+		return err
 	}
 
 	return nil
 }
 
-func (c *conn) SendError(err error) error {
+func (c *conn) reduce() {
+	c.Add(1)
+	for buf := range c.streams {
+		if err := c.flush(buf.Bytes()); err != nil {
+			break
+		}
+	}
+	c.Done()
+}
+
+func (c *conn) status(ignoreWriteOnly bool) *ConnStatus {
+	c.RLock()
+	name := c.name
+	flags := c.flags
+	lastAuth := c.lastAuth
+	c.RUnlock()
+
+	// NOTE ignore write only (launcher conn)
+	if ignoreWriteOnly && flags == connection.Writable {
+		return nil
+	}
+
+	chs := []event.Event{}
+	c.EachChannels(func(ev event.Event) event.Event {
+		chs = append(chs, ev)
+		return ev
+	})
+
+	return &ConnStatus{
+		Channel:  chs,
+		Name:     name,
+		LastAuth: lastAuth,
+		Flag:     flags,
+	}
+}
+
+func (c *conn) SendError(err error) {
 	buf := makeError(err)
 	buf.Write(connection.EOL)
-	return c.flush(buf.Bytes())
+	c.streams <- buf
 }
 
-func (c *conn) SendReply(m string) error {
+func (c *conn) SendReply(m string) {
 	buf := makeReply(m)
 	buf.Write(connection.EOL)
-	return c.flush(buf.Bytes())
+	c.streams <- buf
 }
 
-func (c *conn) SendPong(ping []byte) error {
+func (c *conn) SendPong(ping []byte) {
 	buf := makePong(ping)
 	buf.Write(connection.EOL)
-	return c.flush(buf.Bytes())
+	c.streams <- buf
 }
 
-func (c *conn) SendEvent(e string) error {
+func (c *conn) SendEvent(e string) {
 	buf := makeEvent(e)
 	buf.Write(connection.EOL)
-	return c.flush(buf.Bytes())
+	c.streams <- buf
 }

@@ -17,7 +17,7 @@ type followConn struct {
 }
 
 // 遮蔽方法
-func (f *followConn) SendEvent(e string) error { return nil }
+func (f *followConn) SendEvent(e string) {}
 
 // 複寫
 func (f *followConn) ReadLine() (line []byte, err error) {

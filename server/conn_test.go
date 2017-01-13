@@ -306,3 +306,17 @@ func TestConn_Receive(t *testing.T) {
 	}
 
 }
+
+func TestConn_Close(t *testing.T) {
+
+	c := &conn{
+		conn:    &fake.NetConn{},
+		streams: make(chan *bytes.Buffer, 1),
+	}
+
+	c.HasName()
+	c.GetName()
+	c.Close(nil)
+	c.Close(nil)
+
+}

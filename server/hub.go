@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -107,9 +108,9 @@ func (h *Hub) quit(c Conn, t time.Time) (auth *store.Auth) {
 	var err error
 	h.Lock()
 	defer func() {
-		h.Unlock()
 		c.Close(err)
 	}()
+	defer h.Unlock()
 	auth = c.GetAuth()
 	auth.DisconnectedAt = t.Unix()
 
@@ -148,6 +149,7 @@ func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 	var ignores = map[Conn]bool{}
 
 	// 先整理要忽略的連線
+	h.RLock()
 	for _, c := range ignore {
 		ignores[c] = true
 	}
@@ -163,28 +165,27 @@ func (h *Hub) publish(e *store.Event, ignore ...Conn) int {
 			conns = append(conns, c)
 		}
 	}
+	h.RUnlock()
 
 	// broadcast
 	var cnt int
 	for _, c := range conns {
 		cnt++
 		h.Printf("send to: %s(%s)", c.RemoteAddr(), c.GetName())
-		go c.SendEvent(e.Raw)
+		c.SendEvent(e.Raw)
 	}
 
 	return cnt
 }
 
-func (h *Hub) sendEventTo(app string, e *store.Event) error {
+func (h *Hub) sendEventTo(app string, e *store.Event) {
 	h.RLock()
 	c := h.m[app]
 	h.RUnlock()
 
 	if c != nil && c.IsListening(e.Name) {
-		return c.SendEvent(e.Raw)
+		c.SendEvent(e.Raw)
 	}
-
-	return nil
 }
 
 func (h *Hub) recover(c Conn, since, until int64) error {
@@ -222,7 +223,7 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 		if c.IsListening(e.Name) {
 			// 先不浪費I/O了
 			// h.Printf("resend %s: %+v\n", c.GetName(), e)
-			return c.SendEvent(e.Raw)
+			c.SendEvent(e.Raw)
 		}
 		return nil
 	}, prefix, since, until)
@@ -251,6 +252,10 @@ func (h *Hub) handle(c Conn) {
 		}
 		h.Printf("%s app(%s) disconnected\n", c.RemoteAddr(), c.GetName())
 	}()
+
+	if c, ok := c.(*conn); ok {
+		go c.reduce()
+	}
 
 	if !c.IsAuthed() {
 		// 登入的第一個訊息一定是登入訊息
@@ -292,8 +297,9 @@ func (h *Hub) handle(c Conn) {
 	for {
 		msg := c.Receive()
 		if msg.Error != nil {
-			h.Println(msg.Error)
-			c.SendError(msg.Error)
+			if msg.Error != io.EOF {
+				h.Println(msg.Error)
+			}
 			return
 		}
 
@@ -441,14 +447,14 @@ func (h *Hub) info(ignoreWriteOnly bool) string {
 
 	ghost := []*ConnStatus{}
 	for c := range h.g {
-		if st := c.(*conn).Status(ignoreWriteOnly); st != nil {
+		if st := c.(*conn).status(ignoreWriteOnly); st != nil {
 			ghost = append(ghost, st)
 		}
 	}
 
 	auth := map[string]*ConnStatus{}
 	for name, c := range h.m {
-		if st := c.(*conn).Status(ignoreWriteOnly); st != nil {
+		if st := c.(*conn).status(ignoreWriteOnly); st != nil {
 			auth[name] = st
 		}
 	}

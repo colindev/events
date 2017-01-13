@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"io/ioutil"
 	"log"
@@ -69,7 +70,10 @@ func TestHub_quit(t *testing.T) {
 	hub := createHub(t)
 	now := time.Now()
 
-	c := &conn{conn: &fake.NetConn{}}
+	c := &conn{
+		conn:    &fake.NetConn{},
+		streams: make(chan *bytes.Buffer, 1),
+	}
 	hub.auth(c, MessageAuth{Name: "test"})
 
 	auth := hub.quit(c, now)
@@ -82,10 +86,18 @@ func TestHub_quit(t *testing.T) {
 func TestHub_quitAll(t *testing.T) {
 	hub := createHub(t)
 
-	c := &conn{conn: &fake.NetConn{}}
-	hub.auth(&conn{conn: &fake.NetConn{}}, MessageAuth{Name: "test1", Flags: 1})
-	hub.auth(c, MessageAuth{Name: "test2", Flags: 2})
-	hub.auth(c, MessageAuth{Name: "test3", Flags: 3})
+	c1 := &conn{
+		conn:    &fake.NetConn{},
+		streams: make(chan *bytes.Buffer, 1),
+	}
+	c2 := &conn{
+		conn:    &fake.NetConn{},
+		streams: make(chan *bytes.Buffer, 1),
+	}
+
+	hub.auth(c2, MessageAuth{Name: "test1", Flags: 1})
+	hub.auth(c1, MessageAuth{Name: "test2", Flags: 2})
+	hub.auth(c1, MessageAuth{Name: "test3", Flags: 3})
 
 	t.Log("auth:", hub.m)
 	t.Log("ghost:", hub.g)
@@ -103,6 +115,7 @@ func TestHub_quitAll(t *testing.T) {
 func BenchmarkHub_handle(b *testing.B) {
 
 	N := 10
+	roundN := b.N
 
 	hub, err := NewHub(&Env{
 		Debug:      true,
@@ -117,7 +130,10 @@ func BenchmarkHub_handle(b *testing.B) {
 
 	sc := []*conn{}
 
+	chEv := make(chan struct{}, roundN*N)
+	chConn := make(chan struct{}, N)
 	for i := 0; i < N; i++ {
+
 		r, w := io.Pipe()
 		defer w.Close()
 		defer r.Close()
@@ -125,27 +141,39 @@ func BenchmarkHub_handle(b *testing.B) {
 
 		fNetConn := &fake.NetConn{
 			W: func(p []byte) (int, error) {
+				chEv <- struct{}{}
 				return len(p), nil
 			},
 			R: r,
+			CloseFunc: func() error {
+				w.Close()
+				return r.Close()
+			},
 		}
 
 		c := &conn{
-			conn: fNetConn,
-			w:    bufio.NewWriter(fNetConn),
-			r:    bufio.NewReader(fNetConn),
-			chs:  map[event.Event]bool{},
+			conn:    fNetConn,
+			w:       bufio.NewWriter(fNetConn),
+			r:       bufio.NewReader(fNetConn),
+			chs:     map[event.Event]bool{},
+			streams: make(chan *bytes.Buffer, 100),
 		}
 
 		sc = append(sc, c)
 
-		go hub.handle(c)
+		go func(i int) {
+			hub.handle(c)
+			b.Logf("handle(%d) end", i)
+		}(i)
+
 		go func(i int) {
 			connection.WriteAuth(cc, "", 3)
-			cc.WriteByte('\n')
-			connection.WriteSubscribe(cc, "*")
-			cc.WriteByte('\n')
+			cc.Write(connection.EOL)
 			cc.Flush()
+			connection.WriteSubscribe(cc, "*")
+			cc.Write(connection.EOL)
+			cc.Flush()
+			chConn <- struct{}{}
 		}(i)
 	}
 
@@ -156,18 +184,25 @@ func BenchmarkHub_handle(b *testing.B) {
 	}
 	storeEvent := connection.MakeEvent("test.data", rd, time.Now())
 
-	roundN := b.N
+	// wait all conn ready
+	for i := 0; i < N; i++ {
+		<-chConn
+	}
+
 	cntChan := make(chan int, roundN)
 	go func() {
 		for i := 0; i < roundN; i++ {
-			go func() {
-				cntChan <- hub.publish(storeEvent)
-			}()
+			cntChan <- hub.publish(storeEvent)
 		}
 	}()
 
 	for i := 0; i < roundN; i++ {
-		b.Log("ok:", <-cntChan)
+		log.Println("ok:", <-cntChan)
+	}
+
+	// wait all msg
+	for i := 0; i < roundN*N; i++ {
+		<-chEv
 	}
 
 	for _, c := range sc {
@@ -175,4 +210,5 @@ func BenchmarkHub_handle(b *testing.B) {
 			b.Error(err)
 		}
 	}
+
 }

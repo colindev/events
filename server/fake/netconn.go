@@ -21,11 +21,12 @@ func (a *Addr) String() string {
 }
 
 type NetConn struct {
-	W       func([]byte) (int, error)
-	R       io.Reader
-	Network string
-	Host    string
-	Port    int
+	W         func([]byte) (int, error)
+	R         io.Reader
+	CloseFunc func() error
+	Network   string
+	Host      string
+	Port      int
 }
 
 func (f *NetConn) Read(b []byte) (int, error) {
@@ -35,7 +36,12 @@ func (f *NetConn) Read(b []byte) (int, error) {
 func (f *NetConn) Write(b []byte) (int, error) {
 	return f.W(b)
 }
-func (*NetConn) Close() error                     { return nil }
+func (c *NetConn) Close() error {
+	if c.CloseFunc != nil {
+		return c.CloseFunc()
+	}
+	return nil
+}
 func (*NetConn) LocalAddr() net.Addr              { return nil }
 func (f *NetConn) RemoteAddr() net.Addr           { return &Addr{network: f.Network, host: f.Host, port: f.Port} }
 func (*NetConn) SetDeadline(time.Time) error      { return nil }
