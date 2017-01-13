@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,8 +34,8 @@ type Conn interface {
 	ReadLine() ([]byte, error)
 	ReadLen([]byte) ([]byte, error)
 	ReadTargetAndLen([]byte) (string, []byte, error)
-	Subscribe([]byte) (string, error)
-	Unsubscribe([]byte) (string, error)
+	Subscribe(string) string
+	Unsubscribe(string) string
 	IsListening(string) bool
 	Err() error
 	Close(error) error
@@ -210,7 +211,28 @@ func (c *conn) Receive() (msg Message) {
 		return
 	}
 
+	msg.Action = line[0]
 	switch line[0] {
+	case connection.CAuth:
+		var (
+			v   MessageAuth
+			err error
+		)
+		// 設定讀寫權限
+		s := strings.SplitN(strings.TrimSpace(string(line[1:])), ":", 2)
+		if len(s) != 2 {
+			msg.Error = fmt.Errorf("auth data schema error: %s", line[1:])
+			break
+		}
+
+		v.Flags, err = strconv.Atoi(s[1])
+		if err != nil {
+			msg.Error = err
+			break
+		}
+		v.Name = s[0]
+		msg.Value = v
+
 	case connection.CRecover:
 		var v MessageRecover
 		v.Since, v.Until = connection.ParseSinceUntil(line[1:])
@@ -218,7 +240,61 @@ func (c *conn) Receive() (msg Message) {
 
 	case connection.CAddChan:
 		var v MessageSubscribe
+		// 去除空白/換行
+		v.Channel = strings.TrimSpace(string(line[1:]))
+		msg.Value = v
 
+	case connection.CDelChan:
+		var v MessageUnsubscribe
+		v.Channel = strings.TrimSpace(string(line[1:]))
+		msg.Value = v
+
+	case connection.CPing:
+		var v MessagePing
+		p, err := connection.ReadLen(c.r, line[1:])
+		if err != nil {
+			msg.Error = err
+			break
+		}
+		v.Payload = p
+		msg.Value = v
+
+	case connection.CInfo:
+		msg.Value = MessageInfo{}
+
+	case connection.CTarget:
+		var v MessageEvent
+		name, p, err := connection.ReadTargetAndLen(c.r, line[1:])
+		if err != nil {
+			msg.Error = err
+			break
+		}
+
+		v.Name, v.RawData, err = connection.ParseEvent(p)
+		if err != nil {
+			msg.Error = err
+			break
+		}
+		v.To = name
+		msg.Value = v
+
+	case connection.CEvent:
+		var v MessageEvent
+		p, err := connection.ReadLen(c.r, line[1:])
+		if err != nil {
+			msg.Error = err
+			break
+		}
+
+		v.Name, v.RawData, err = connection.ParseEvent(p)
+		if err != nil {
+			msg.Error = err
+			break
+		}
+		msg.Value = v
+
+	default:
+		msg.Error = fmt.Errorf("unknown protocol [%c]", line[0])
 	}
 
 	return
@@ -237,39 +313,35 @@ func (c *conn) ReadTargetAndLen(p []byte) (target string, b []byte, err error) {
 	return connection.ReadTargetAndLen(c.r, p)
 }
 
-func (c *conn) Subscribe(p []byte) (string, error) {
+func (c *conn) Subscribe(ch string) string {
 
 	c.Lock()
 	defer c.Unlock()
 
-	// 去除空白/換行
-	ind := strings.TrimSpace(string(p))
-	ev := event.Event(ind)
+	ev := event.Event(ch)
 	// 判斷是否重複註冊
 	if _, exists := c.chs[ev]; exists {
 		// 容錯重複註冊
-		return ind, nil
+		return ch
 	}
 
 	c.chs[ev] = true
-	return ind, nil
+	return ch
 }
 
-func (c *conn) Unsubscribe(p []byte) (string, error) {
+func (c *conn) Unsubscribe(ch string) string {
 	c.Lock()
 	defer c.Unlock()
 
-	// 去除空白/換行
-	ind := strings.TrimSpace(string(p))
-	ev := event.Event(ind)
+	ev := event.Event(ch)
 	// 判斷是否存在
 	if _, exists := c.chs[ev]; !exists {
-		return "", fmt.Errorf("channel(%s) not found", ind)
+		return ""
 	}
 
 	delete(c.chs, ev)
 
-	return ind, nil
+	return ch
 }
 
 func (c *conn) IsListening(eventName string) bool {

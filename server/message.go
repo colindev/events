@@ -33,7 +33,7 @@ type MessageUnsubscribe struct {
 
 // MessagePing contain ping request data
 type MessagePing struct {
-	Payload string
+	Payload []byte
 }
 
 // MessageInfo contain info request data

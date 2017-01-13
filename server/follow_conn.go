@@ -96,7 +96,7 @@ func Follow(hub *Hub, addr string, since int64) error {
 
 	// client conn 連線登入完就不用了
 	sc := newConn(cc.Conn(), time.Now())
-	if err := hub.auth(sc, []byte(fmt.Sprintf(":%d", connection.Writable|connection.Readable))); err != nil {
+	if err := hub.auth(sc, MessageAuth{Flags: connection.Writable | connection.Readable}); err != nil {
 		return fmt.Errorf("follow register error: %v", err)
 	}
 	sc.SetAuthed(true)

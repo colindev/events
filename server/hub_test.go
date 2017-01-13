@@ -22,6 +22,7 @@ func createHub(t *testing.T) *Hub {
 		EventDSN:   "file::memory:?cache=shared",
 		GCDuration: "1h",
 	}, log.New(os.Stdout, "", log.LstdFlags))
+
 	if err != nil {
 		t.Error("NewHub error:", err)
 		t.Skip()
@@ -34,19 +35,13 @@ func TestHub_auth(t *testing.T) {
 	hub := createHub(t)
 
 	c := &conn{}
-	if err := hub.auth(c, []byte("test")); err == nil {
-		t.Error("auth stream has wrong Read Writer Flags, but passed")
-		t.Skip()
+	if err := hub.auth(c, MessageAuth{Name: "test"}); err != nil {
+		t.Error(err)
+		t.Skip(hub.info(false))
 	}
-	if err := hub.auth(c, []byte(":test")); err == nil {
-		t.Error("auth stream has wrong Read Writer Flags, but passed")
-		t.Skip()
-	}
-	if err := hub.auth(c, []byte("test:3")); err != nil {
-		t.Error("hub.auth error: ", err)
-	}
-	if err := hub.auth(&conn{}, []byte("test:3")); err == nil {
+	if err := hub.auth(&conn{}, MessageAuth{Name: "test", Flags: 3}); err == nil {
 		t.Error("can't duplicate auth")
+		t.Skip(hub.info(false))
 	}
 	if c.GetName() != "test" {
 		t.Errorf("auth set conn name error: expect %s, but %s", "test", c.GetName())
@@ -58,7 +53,7 @@ func TestHub_auth(t *testing.T) {
 		t.Errorf("found wrong conn pointer: %+v", cc)
 	}
 
-	if err := hub.auth(c, []byte(":3")); err != nil {
+	if err := hub.auth(c, MessageAuth{Flags: 3}); err != nil {
 		t.Error("ghost auth error:", err)
 	}
 	if !hub.g[c] {
@@ -75,7 +70,7 @@ func TestHub_quit(t *testing.T) {
 	now := time.Now()
 
 	c := &conn{conn: &fake.NetConn{}}
-	hub.auth(c, []byte("test"))
+	hub.auth(c, MessageAuth{Name: "test"})
 
 	auth := hub.quit(c, now)
 
@@ -88,9 +83,9 @@ func TestHub_quitAll(t *testing.T) {
 	hub := createHub(t)
 
 	c := &conn{conn: &fake.NetConn{}}
-	hub.auth(&conn{conn: &fake.NetConn{}}, []byte("test1:1"))
-	hub.auth(c, []byte("test2:1"))
-	hub.auth(c, []byte("test3:3"))
+	hub.auth(&conn{conn: &fake.NetConn{}}, MessageAuth{Name: "test1", Flags: 1})
+	hub.auth(c, MessageAuth{Name: "test2", Flags: 2})
+	hub.auth(c, MessageAuth{Name: "test3", Flags: 3})
 
 	t.Log("auth:", hub.m)
 	t.Log("ghost:", hub.g)

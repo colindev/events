@@ -108,12 +108,9 @@ func TestConn_IsListening(t *testing.T) {
 
 	c := newConn(nil, time.Now())
 
-	ind, err := c.Subscribe([]byte("game.*\r\n"))
-	if err != nil {
-		t.Error(err)
-	}
-	if ind != "game.*" {
-		t.Error("convert channel name error:", ind)
+	ch := c.Subscribe("game.*")
+	if ch != "game.*" {
+		t.Error("convert channel name error:", ch)
 	}
 
 	if !c.IsListening("game.start") {
@@ -150,21 +147,9 @@ func TestConnSubAndUnsub(t *testing.T) {
 	c := newConn(nil, time.Now())
 
 	temp := "aaa.*"
-	tempSpace := fmt.Sprintf(" %s ", temp)
-
-	ind, err := c.Subscribe([]byte(tempSpace))
-	if err != nil {
-		t.Error("subscribe error: ", err)
-	}
-	if ind != temp {
-		t.Error("trim space fail: ", ind)
-	}
-	ind, err = c.Subscribe([]byte(temp))
-	if err != nil {
-		t.Error("duplicate sub error")
-	}
-	if ind != temp {
-		t.Error("duplicate trim error:", ind)
+	ch := c.Subscribe(temp)
+	if ch != temp {
+		t.Error("sub return error: ", ch)
 	}
 
 	if len(c.EachChannels()) != 1 {
@@ -175,22 +160,16 @@ func TestConnSubAndUnsub(t *testing.T) {
 	// start test unsub
 	otherChs := []event.Event{"aa.*", "aaaa.*", "aaa.bbb"}
 	for _, ch := range otherChs {
-		c.Subscribe(ch.Bytes())
+		c.Subscribe(ch.String())
 	}
 
-	ind, err = c.Unsubscribe([]byte(tempSpace))
-	if err != nil {
-		t.Error("unsubscribe error: ", err)
+	ch = c.Unsubscribe(temp)
+	if ch != temp {
+		t.Error("unsub return fail: ", ch)
 	}
-	if ind != temp {
-		t.Error("trim space fail: ", ind)
-	}
-	ind, err = c.Unsubscribe([]byte(temp))
-	if err == nil {
-		t.Error("duplicate unsub error")
-	}
-	if ind != "" {
-		t.Error("duplicate unsub drop ret fail: ", ind)
+	ch = c.Unsubscribe(temp)
+	if ch != "" {
+		t.Error("duplicate unsub return fail")
 	}
 
 	curChs := c.EachChannels()
@@ -198,6 +177,132 @@ func TestConnSubAndUnsub(t *testing.T) {
 		if _, exists := curChs[ch]; !exists {
 			t.Error("miss channel: ", ch)
 		}
+	}
+
+}
+
+func TestConn_Receive(t *testing.T) {
+
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	defer pr.Close()
+
+	c := &conn{
+		r: bufio.NewReader(pr),
+		w: bufio.NewWriter(pw),
+	}
+	var (
+		m   Message
+		chs = []string{"a", "b", "c"}
+	)
+
+	go func() {
+
+		connection.WriteAuth(c.w, "test", 3)
+		c.flush(connection.EOL)
+
+		connection.WriteRecover(c.w, 123, 456)
+		c.flush(connection.EOL)
+
+		connection.WriteSubscribe(c.w, chs...)
+		c.flush(nil)
+
+		connection.WriteUnsubscribe(c.w, chs...)
+		c.flush(nil)
+
+		connection.WritePing(c.w, "aaaa")
+		c.flush(connection.EOL)
+
+		connection.WriteEvent(c.w, connection.MakeEventStream("test.1", event.RawData("xxxxx")))
+		c.flush(connection.EOL)
+
+		connection.WriteEventTo(c.w, "hello", connection.MakeEventStream("test.2", event.RawData("xxxxx")))
+		c.flush(connection.EOL)
+
+	}()
+
+	// auth
+	m = c.Receive()
+	if m.Error != nil {
+		t.Error(m.Error)
+	} else if v, ok := m.Value.(MessageAuth); !ok {
+		t.Errorf("auth read fail %#v", m.Value)
+	} else if v.Name != "test" {
+		t.Errorf("auth name fail %#v", v.Name)
+	} else if v.Flags != 3 {
+		t.Errorf("auth flags fail %#v", v.Flags)
+	}
+
+	// recover
+	m = c.Receive()
+	if m.Error != nil {
+		t.Error(m.Error)
+	} else if v, ok := m.Value.(MessageRecover); !ok {
+		t.Errorf("recover read fail %#v", m.Value)
+	} else if v.Since != 123 || v.Until != 456 {
+		t.Errorf("recover %d %d", v.Since, v.Until)
+	}
+
+	// subscribe
+	for _, ch := range chs {
+		m = c.Receive()
+		if m.Error != nil {
+			t.Error(m.Error)
+		} else if v, ok := m.Value.(MessageSubscribe); !ok {
+			t.Errorf("sub read fail %#v", m.Value)
+		} else if v.Channel != ch {
+			t.Errorf("sub error expect %s, but %s", ch, v.Channel)
+		}
+	}
+
+	// unsubscribe
+	for _, ch := range chs {
+		m = c.Receive()
+		if m.Error != nil {
+			t.Error(m.Error)
+		} else if v, ok := m.Value.(MessageUnsubscribe); !ok {
+			t.Errorf("unsub read fail %#v", m.Value)
+		} else if v.Channel != ch {
+			t.Errorf("unsub error expect %s, but %s", ch, v.Channel)
+		}
+	}
+
+	// ping
+	m = c.Receive()
+	if m.Error != nil {
+		t.Error(m.Error)
+	} else if v, ok := m.Value.(MessagePing); !ok {
+		t.Errorf("ping read fail %#v", m.Value)
+	} else if string(v.Payload) != "aaaa" {
+		t.Errorf("ping error %s", v.Payload)
+	}
+
+	// event
+	m = c.Receive()
+	if m.Error != nil {
+		t.Error(m.Error)
+	} else if v, ok := m.Value.(MessageEvent); !ok {
+		t.Errorf("event read fail %#v", m.Value)
+	} else if v.To != "" {
+		t.Errorf("event error %#v", v)
+	} else if v.Name != "test.1" {
+		t.Errorf("event error %#v", v)
+	} else if v.RawData.String() != "xxxxx" {
+		t.Errorf("event error %#v", v)
+	}
+
+	// event to
+	m = c.Receive()
+	if m.Error != nil {
+		t.Error(m.Error)
+	} else if v, ok := m.Value.(MessageEvent); !ok {
+		t.Errorf("event to read fail %#v", m.Value)
+	} else if v.To != "hello" {
+		t.Errorf("event to error %#v", v)
+	} else if v.Name != "test.2" {
+		t.Errorf("event to error %#v", v)
+	} else if v.RawData.String() != "xxxxx" {
+		t.Errorf("event to error %#v", v)
 	}
 
 }

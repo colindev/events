@@ -1,12 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +33,10 @@ type Hub struct {
 	*log.Logger
 }
 
+var (
+	errNeedAuth = errors.New("need auth")
+)
+
 // NewHub create and return a Hub instance
 func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 
@@ -57,55 +60,44 @@ func NewHub(env *Env, logger *log.Logger) (*Hub, error) {
 }
 
 // Auth 執行登入紀錄
-func (h *Hub) auth(c Conn, p []byte) error {
+func (h *Hub) auth(c Conn, msgAuth MessageAuth) error {
 
 	h.Lock()
 	defer h.Unlock()
 
-	// 設定讀寫權限
-	s := strings.SplitN(strings.TrimSpace(string(p)), ":", 2)
-	if len(s) != 2 {
-		return fmt.Errorf("auth data schema error: %s", p)
-	}
-	name := s[0]
-	flags, err := strconv.Atoi(s[1])
-	if err != nil {
-		return fmt.Errorf("auth flags error: %v", err)
-	}
-	c.SetFlags(flags)
-	h.Println("auth[name]=", name)
-	h.Println("auth[flags]=", client.Flag(flags).String())
+	c.SetFlags(msgAuth.Flags)
+	h.Println("auth[name]=", msgAuth.Name)
+	h.Println("auth[flags]=", client.Flag(msgAuth.Flags).String())
 
 	// 匿名登入
-	if name == "" {
+	if msgAuth.Name == "" {
 		h.g[c] = true
 		return nil
 	}
 
-	if c, exists := h.m[name]; exists {
-		return fmt.Errorf("hub: duplicate auth %s(%s)", c.RemoteAddr(), name)
+	if c, exists := h.m[msgAuth.Name]; exists {
+		return fmt.Errorf("hub: duplicate auth %s(%+v)", c.RemoteAddr(), msgAuth)
 	}
 
-	c.SetName(name)
+	c.SetName(msgAuth.Name)
 	if c.IsAuthed() {
 		for n, x := range h.m {
 			if x == c {
 				delete(h.m, n)
-				break
 			}
 		}
 	}
-	h.m[name] = c
+	h.m[msgAuth.Name] = c
 	c.SetAuthed(true)
-	auth, err := h.store.GetLast(name)
+	auth, err := h.store.GetLast(msgAuth.Name)
 	if err != nil {
 		return err
 	}
 	// 取得上次離線時間
 	c.SetLastAuth(auth)
-	h.Printf("[hub] %s last: %+v\n", name, auth)
+	h.Printf("[hub] %+v last: %+v\n", msgAuth, auth)
 	nowAuth := c.GetAuth()
-	h.Printf("[hub] %s auth: %v\n", name, nowAuth)
+	h.Printf("[hub] %+v auth: %v\n", msgAuth, nowAuth)
 
 	return h.store.NewAuth(nowAuth)
 }
@@ -247,6 +239,7 @@ func (h *Hub) recover(c Conn, since, until int64) error {
 
 func (h *Hub) handle(c Conn) {
 
+	var err error
 	h.Add(1)
 	defer func() {
 		if pub, err := h.publishQuit(c, h.quit(c, time.Now())); pub {
@@ -261,10 +254,21 @@ func (h *Hub) handle(c Conn) {
 
 	if !c.IsAuthed() {
 		// 登入的第一個訊息一定是登入訊息
-		line, err := c.ReadLine()
-		if err != nil {
+		msg := c.Receive()
+		if msg.Error != nil {
+			h.Println(msg.Error)
+			c.SendError(msg.Error)
 			return
-		} else if err := h.auth(c, line[1:]); err != nil {
+		}
+
+		value, ok := msg.Value.(MessageAuth)
+		if !ok {
+			h.Println(err)
+			c.SendError(errNeedAuth)
+			return
+		}
+
+		if err := h.auth(c, value); err != nil {
 			h.Println(err)
 			c.SendError(err)
 			return
@@ -286,55 +290,36 @@ func (h *Hub) handle(c Conn) {
 	}()
 
 	for {
-		line, err := c.ReadLine()
-		if err != nil {
+		msg := c.Receive()
+		if msg.Error != nil {
+			h.Println(msg.Error)
+			c.SendError(msg.Error)
 			return
 		}
 
-		if line == nil {
-			// drop empty line
-			continue
-		}
-
-		switch line[0] {
-		// case client.CAuth: 只做單次登入
-		case connection.CRecover:
-			since, until := connection.ParseSinceUntil(line[1:])
-
-			if err := h.recover(c, since, until); err != nil {
-				h.Printf("recover since=%d until=%d error: %v\n", since, until, err)
+		v := msg.Value
+		switch v := v.(type) {
+		// case MessageAuth: 只做單次登入
+		case MessageRecover:
+			if err := h.recover(c, v.Since, v.Until); err != nil {
+				h.Printf("recover %+v error: %v\n", v, err)
 				c.SendError(err)
 			}
 
-		case connection.CAddChan:
-			if channel, err := c.Subscribe(line[1:]); err != nil {
-				h.Printf("app(%s) subscribe failed %v\n", c.GetName(), err)
-				c.SendError(err)
-			} else {
-				h.Printf("app(%s) subscribe [%s]\n", c.GetName(), channel)
-				c.SendReply("subscribe " + channel + " OK")
-			}
+		case MessageSubscribe:
+			ch := c.Subscribe(v.Channel)
+			h.Printf("app(%s) subscribe [%s]\n", c.GetName(), ch)
+			c.SendReply("subscribe " + ch + " OK")
 
-		case connection.CDelChan:
-			if channel, err := c.Unsubscribe(line[1:]); err != nil {
-				h.Printf("app(%s) unsubscribe failed %v\n", c.GetName(), err)
-				c.SendError(err)
-			} else {
-				h.Printf("app(%s) unsubscribe [%s]\n", c.GetName(), channel)
-				c.SendReply("unsubscribe " + channel + " OK")
-			}
+		case MessageUnsubscribe:
+			ch := c.Unsubscribe(v.Channel)
+			h.Printf("app(%s) unsubscribe [%s]\n", c.GetName(), ch)
+			c.SendReply("unsubscribe " + ch + " OK")
 
-		case connection.CPing:
-			p, err := c.ReadLen(line[1:])
-			if err != nil {
-				h.Println(err)
-				c.SendError(err)
-				return
-			}
+		case MessagePing:
+			c.SendPong(v.Payload)
 
-			c.SendPong(p)
-
-		case connection.CInfo:
+		case MessageInfo:
 			rd, err := event.Compress(event.RawData(h.info(true)))
 			if err != nil {
 				c.SendError(err)
@@ -342,63 +327,28 @@ func (h *Hub) handle(c Conn) {
 				c.SendEvent(string(connection.MakeEventStream(event.Info, rd)))
 			}
 
-		case connection.CTarget:
-			target, p, err := c.ReadTargetAndLen(line[1:])
-			if err != nil {
-				h.Println(err)
-				c.SendError(err)
-				return
-			}
-
+		case MessageEvent:
 			if !c.Writable() {
 				h.Printf("this (%p)%#v has no writable flag, event droped\n", c.(*conn), c)
 				if h.verbose {
-					h.Printf("\n--- payload\n%s\n---", p)
+					s, _ := event.Uncompress(v.RawData)
+					h.Printf("\n--- payload %s %s\n%s\n---", v.To, v.Name, s)
 				}
 				continue
 			}
 
-			eventName, eventData, err := connection.ParseEvent(p)
-			s, _ := event.Uncompress(eventData)
-			h.Printf("from %s to %s: %s %s %v\n", c.RemoteAddr(), target, eventName, s, err)
-			// 指定傳送不儲存
-			if err == nil {
-				storeEvent := connection.MakeEvent(eventName, eventData, time.Now())
-				h.sendEventTo(target, storeEvent)
+			s, _ := event.Uncompress(v.RawData)
+			storeEvent := connection.MakeEvent(v.Name, v.RawData, time.Now())
+			if v.To != "" {
+				h.Printf("from %s to %s: %s %s %v\n", c.RemoteAddr(), v.To, v.Name, s, err)
+				// 指定傳送不儲存
+				h.sendEventTo(v.To, storeEvent)
 			} else {
-				c.SendError(err)
-			}
-
-		case connection.CEvent:
-			p, err := c.ReadLen(line[1:])
-			if err != nil {
-				h.Println(err)
-				c.SendError(err)
-				return
-			}
-
-			if !c.Writable() {
-				h.Printf("this (%p)%#v has no writable flag, event droped\n", c.(*conn), c)
-				if h.verbose {
-					eventName, eventData, err := connection.ParseEvent(p)
-					s, _ := event.Uncompress(eventData)
-					h.Printf("\n--- payload\n%s %s\n%v\n---", eventName, s, err)
-				}
-				continue
-			}
-
-			eventName, eventData, err := connection.ParseEvent(p)
-			s, _ := event.Uncompress(eventData)
-			h.Printf("from %s broadcast: %s %s %v\n", c.RemoteAddr(), eventName, s, err)
-			if err == nil {
-				storeEvent := connection.MakeEvent(eventName, eventData, time.Now())
+				h.Printf("from %s broadcast: %s %s %v\n", c.RemoteAddr(), v.Name, s, err)
 				h.store.Events <- storeEvent
 				h.publish(storeEvent)
-			} else {
-				c.SendError(err)
 			}
-		default:
-			h.Println("droped")
+
 		}
 	}
 }
