@@ -197,7 +197,7 @@ func BenchmarkHub_handle(b *testing.B) {
 	}()
 
 	for i := 0; i < roundN; i++ {
-		log.Println("ok:", <-cntChan)
+		b.Log("ok:", <-cntChan)
 	}
 
 	// wait all msg
